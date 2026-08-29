@@ -1,0 +1,42 @@
+# Monde dans lequel les zones du Hunger Games sont allouees.
+# Doit etre un monde "normal" (generation vanilla, pas plat/vide).
+world: world
+
+# Point de retour des joueurs quand ils ne sont pas en partie (hub).
+hub:
+  x: 0.5
+  y: 100
+  z: 0.5
+
+zone:
+  # Taille (diametre) d'une zone en blocs. 1000 => rayon 500 depuis le centre de la zone.
+  size: 1000
+  # Marge de securite a l'interieur de la bordure pour le scatter des joueurs (evite de spawn collé au bord).
+  scatter-margin: 40
+  # Fichier ou sont stockees les cellules deja utilisees (jamais reutilisees).
+  zones-file: zones.yml
+  # Nombre de chunks charges/generes par tick pendant le prechargement d'une zone.
+  chunks-per-tick: 8
+
+lobby:
+  # Hauteur (Y) de la plateforme flottante de lobby, au centre de chaque zone.
+  y: 200
+  radius: 8
+
+game:
+  min-players: 2
+  max-players: 100
+  countdown-seconds: 30
+  # Duree pendant laquelle le PVP est desactive apres le scatter (farm autorise).
+  grace-period-seconds: 300
+  scatter:
+    min-distance-between-players: 20
+  border:
+    shrink:
+      enabled: true
+      # Ne commence a retrecir qu'apres la fin de la periode de grace.
+      target-diameter: 150
+      duration-seconds: 900
+
+storage:
+  kits-file: kits.yml

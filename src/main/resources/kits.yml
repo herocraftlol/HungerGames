@@ -1,0 +1,23 @@
+kits:
+  guerrier:
+    display-name: "&cGuerrier"
+    icon: STONE_SWORD
+    items:
+      - STONE_SWORD:1
+  bucheron:
+    display-name: "&6Bucheron"
+    icon: WOODEN_AXE
+    items:
+      - WOODEN_AXE:1
+  mineur:
+    display-name: "&7Mineur"
+    icon: WOODEN_PICKAXE
+    items:
+      - WOODEN_PICKAXE:1
+      - TORCH:16
+  archer:
+    display-name: "&2Archer"
+    icon: BOW
+    items:
+      - BOW:1
+      - ARROW:8
