@@ -24,13 +24,23 @@ public class HGCommand implements CommandExecutor {
         }
 
         if (args.length == 0) {
-            player.sendMessage(Component.text("/hg join | leave | kit", NamedTextColor.YELLOW));
+            player.sendMessage(Component.text("/hg join | leave | kit | arenas | unspectate", NamedTextColor.YELLOW));
             return true;
         }
 
         switch (args[0].toLowerCase()) {
             case "join" -> plugin.getArenaManager().joinPlayer(player);
-            case "leave" -> plugin.getArenaManager().leavePlayer(player);
+            case "leave" -> {
+                if (plugin.getArenaManager().getArenaOf(player).isPresent()) {
+                    plugin.getArenaManager().leavePlayer(player);
+                } else if (plugin.getArenaManager().findSpectatorArenaOf(player).isPresent()) {
+                    plugin.getArenaManager().unspectate(player);
+                } else {
+                    player.sendMessage(Component.text("Tu n'es dans aucune partie.", NamedTextColor.RED));
+                }
+            }
+            case "arenas", "gui" -> plugin.getArenaGUI().open(player);
+            case "unspectate" -> plugin.getArenaManager().unspectate(player);
             case "kit" -> {
                 if (plugin.getArenaManager().getArenaOf(player).isEmpty()) {
                     player.sendMessage(Component.text("Rejoins d'abord une partie avec /hg join.", NamedTextColor.RED));
@@ -38,7 +48,7 @@ public class HGCommand implements CommandExecutor {
                 }
                 player.openInventory(plugin.getKitSelectorGUI().build(player));
             }
-            default -> player.sendMessage(Component.text("/hg join | leave | kit", NamedTextColor.YELLOW));
+            default -> player.sendMessage(Component.text("/hg join | leave | kit | arenas | unspectate", NamedTextColor.YELLOW));
         }
         return true;
     }

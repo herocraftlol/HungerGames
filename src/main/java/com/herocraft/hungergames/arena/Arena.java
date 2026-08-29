@@ -4,6 +4,7 @@ import com.herocraft.hungergames.HungerGamesPlugin;
 import com.herocraft.hungergames.kit.Kit;
 import com.herocraft.hungergames.util.RandomLocationUtil;
 import com.herocraft.hungergames.util.ScoreboardUtil;
+import com.herocraft.hungergames.util.SpectatorItems;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.title.Title;
@@ -16,7 +17,6 @@ import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
-
 
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -36,6 +36,7 @@ public class Arena {
     private ArenaState state = ArenaState.PRELOADING;
     private final Set<UUID> players = new LinkedHashSet<>();
     private final Set<UUID> alive = new LinkedHashSet<>();
+    private final Set<UUID> spectators = new LinkedHashSet<>();
     private final Map<UUID, String> selectedKits = new LinkedHashMap<>();
 
     private BossBar preloadBar;
@@ -108,6 +109,23 @@ public class Arena {
         return (state == ArenaState.PRELOADING || state == ArenaState.WAITING || state == ArenaState.STARTING) && !isFull();
     }
 
+    /** Une arène se regarde en spectateur une fois la partie lancée (farm ou PVP). */
+    public boolean isSpectatable() {
+        return state == ArenaState.GRACE_PERIOD || state == ArenaState.PVP;
+    }
+
+    public int getSpectatorCount() {
+        return spectators.size();
+    }
+
+    public boolean isSpectator(Player player) {
+        return spectators.contains(player.getUniqueId());
+    }
+
+    public Location getLobbyLocation() {
+        return lobbyLocation.clone();
+    }
+
     // ---------------------------------------------------------------- préchargement
 
     public void startPreload() {
@@ -168,6 +186,52 @@ public class Arena {
     public void selectKit(Player player, String kitId) {
         selectedKits.put(player.getUniqueId(), kitId);
         player.sendMessage(Component.text("Kit sélectionné : " + kitId, NamedTextColor.GREEN));
+    }
+
+    // ---------------------------------------------------------------- spectateurs
+
+    /**
+     * Fait rejoindre un joueur externe (qui ne participe pas) en spectateur de cette
+     * arène. Renvoie false si l'arène n'est pas dans un état "regardable".
+     */
+    public boolean addSpectator(Player player) {
+        if (!isSpectatable()) return false;
+        if (spectators.contains(player.getUniqueId())) return false;
+
+        spectators.add(player.getUniqueId());
+        player.teleport(lobbyLocation);
+        player.setGameMode(GameMode.SPECTATOR);
+        player.getInventory().clear();
+        player.getInventory().setItem(8, SpectatorItems.createLeaveItem(plugin));
+
+        WorldBorder border = org.bukkit.Bukkit.createWorldBorder();
+        border.setCenter(zone.centerX() + 0.5, zone.centerZ() + 0.5);
+        border.setSize(zone.size());
+        player.setWorldBorder(border);
+
+        refreshScoreboard(player);
+        player.sendMessage(Component.text("Tu observes la partie en spectateur. Utilise la boussole (ou /hg unspectate) pour repartir.", NamedTextColor.AQUA));
+        return true;
+    }
+
+    /** Fait sortir un joueur du mode spectateur de cette arène (ne fait rien s'il ne spectate pas). */
+    public void removeSpectator(Player player) {
+        if (!spectators.remove(player.getUniqueId())) return;
+        player.setWorldBorder(null);
+        player.getInventory().clear();
+        player.setScoreboard(org.bukkit.Bukkit.getScoreboardManager().getMainScoreboard());
+    }
+
+    private void removeAllSpectators() {
+        for (UUID uuid : new LinkedHashSet<>(spectators)) {
+            Player p = org.bukkit.Bukkit.getPlayer(uuid);
+            if (p != null) {
+                removeSpectator(p);
+                plugin.getArenaManager().sendToHub(p);
+                p.sendMessage(Component.text("La partie que tu regardais est terminée.", NamedTextColor.GRAY));
+            }
+        }
+        spectators.clear();
     }
 
     private int getMinPlayers() {
@@ -287,7 +351,7 @@ public class Arena {
             if (p == null) continue;
             WorldBorder border = p.getWorldBorder();
             if (border == null) continue;
-            border.setSize((double) targetDiameter, durationSeconds * 20L); // ticks
+            border.setSize(targetDiameter, durationSeconds * 20L);
         }
         broadcast(Component.text("La zone jouable va se refermer vers le centre !", NamedTextColor.RED));
     }
@@ -335,6 +399,7 @@ public class Arena {
         }
 
         if (preloadBar != null) preloadBar.removeAll();
+        removeAllSpectators();
         plugin.getArenaManager().onArenaEnded(this);
     }
 
@@ -347,6 +412,10 @@ public class Arena {
                 Player p = org.bukkit.Bukkit.getPlayer(uuid);
                 if (p != null) refreshScoreboard(p);
             }
+            for (UUID uuid : spectators) {
+                Player p = org.bukkit.Bukkit.getPlayer(uuid);
+                if (p != null) refreshScoreboard(p);
+            }
         }, 20L, 20L);
     }
 
@@ -355,6 +424,9 @@ public class Arena {
         lines.add("§7Zone: §f" + zone.cellX() + "," + zone.cellZ());
         lines.add("§7Joueurs: §f" + players.size() + "/" + getMaxPlayers());
         lines.add("§7Vivants: §f" + alive.size());
+        if (!spectators.isEmpty()) {
+            lines.add("§7Spectateurs: §f" + spectators.size());
+        }
         switch (state) {
             case PRELOADING -> lines.add("§eChargement de la zone...");
             case WAITING -> lines.add("§eEn attente de joueurs...");

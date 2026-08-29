@@ -7,7 +7,9 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,6 +20,7 @@ public class ArenaManager {
     private final ZoneAllocator zoneAllocator;
     private final Map<UUID, Arena> arenas = new LinkedHashMap<>();
     private final Map<UUID, Arena> playerArena = new LinkedHashMap<>();
+    private final Map<UUID, Arena> spectatorArena = new LinkedHashMap<>();
 
     public ArenaManager(HungerGamesPlugin plugin) {
         this.plugin = plugin;
@@ -76,7 +79,28 @@ public class ArenaManager {
             player.sendMessage(Component.text("Tu es déjà dans une partie.", NamedTextColor.RED));
             return false;
         }
+        if (spectatorArena.containsKey(player.getUniqueId())) {
+            player.sendMessage(Component.text("Tu es en mode spectateur. Fais /hg unspectate d'abord.", NamedTextColor.RED));
+            return false;
+        }
         Arena arena = findOrCreateJoinableArena();
+        return joinArena(player, arena);
+    }
+
+    /** Fait rejoindre un joueur dans une arène précise (utilisé par le GUI). */
+    public boolean joinArena(Player player, Arena arena) {
+        if (playerArena.containsKey(player.getUniqueId())) {
+            player.sendMessage(Component.text("Tu es déjà dans une partie.", NamedTextColor.RED));
+            return false;
+        }
+        if (spectatorArena.containsKey(player.getUniqueId())) {
+            player.sendMessage(Component.text("Tu es en mode spectateur. Fais /hg unspectate d'abord.", NamedTextColor.RED));
+            return false;
+        }
+        if (!arena.isJoinable()) {
+            player.sendMessage(Component.text("Cette partie n'est plus disponible.", NamedTextColor.RED));
+            return false;
+        }
         playerArena.put(player.getUniqueId(), arena);
         arena.addPlayer(player);
         return true;
@@ -98,9 +122,51 @@ public class ArenaManager {
         return Optional.ofNullable(playerArena.get(player.getUniqueId()));
     }
 
+    // ---------------------------------------------------------------- spectateurs
+
+    /** Fait rejoindre un joueur en spectateur d'une arène en cours. */
+    public boolean spectateArena(Player player, Arena arena) {
+        if (playerArena.containsKey(player.getUniqueId())) {
+            player.sendMessage(Component.text("Tu es déjà dans une partie. Fais /hg leave d'abord.", NamedTextColor.RED));
+            return false;
+        }
+        Arena currentSpectate = spectatorArena.get(player.getUniqueId());
+        if (currentSpectate != null) {
+            if (currentSpectate.getId().equals(arena.getId())) {
+                player.sendMessage(Component.text("Tu regardes déjà cette partie en spectateur.", NamedTextColor.RED));
+                return false;
+            }
+            currentSpectate.removeSpectator(player);
+            spectatorArena.remove(player.getUniqueId());
+        }
+        if (!arena.addSpectator(player)) {
+            player.sendMessage(Component.text("Cette partie ne peut pas être regardée en spectateur pour le moment.", NamedTextColor.RED));
+            return false;
+        }
+        spectatorArena.put(player.getUniqueId(), arena);
+        return true;
+    }
+
+    public boolean unspectate(Player player) {
+        Arena arena = spectatorArena.remove(player.getUniqueId());
+        if (arena == null) {
+            player.sendMessage(Component.text("Tu n'es pas en mode spectateur.", NamedTextColor.RED));
+            return false;
+        }
+        arena.removeSpectator(player);
+        sendToHub(player);
+        player.sendMessage(Component.text("Tu as quitté le mode spectateur.", NamedTextColor.YELLOW));
+        return true;
+    }
+
+    public Optional<Arena> findSpectatorArenaOf(Player player) {
+        return Optional.ofNullable(spectatorArena.get(player.getUniqueId()));
+    }
+
     public void onArenaEnded(Arena arena) {
         arenas.remove(arena.getId());
         playerArena.values().removeIf(a -> a.getId().equals(arena.getId()));
+        spectatorArena.values().removeIf(a -> a.getId().equals(arena.getId()));
         plugin.getLogger().info("Arène " + arena.getId() + " terminée et libérée. Zone jamais réutilisée.");
     }
 
@@ -109,6 +175,15 @@ public class ArenaManager {
         if (arena != null) {
             arena.removePlayer(player);
         }
+        Arena spectating = spectatorArena.remove(player.getUniqueId());
+        if (spectating != null) {
+            spectating.removeSpectator(player);
+        }
+    }
+
+    /** Liste ordonnée et stable des arènes actives, utilisée par le GUI (index = position dans la liste). */
+    public List<Arena> getArenasOrdered() {
+        return new ArrayList<>(arenas.values());
     }
 
     public Map<UUID, Arena> getArenas() {
