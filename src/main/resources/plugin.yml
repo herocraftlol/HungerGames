@@ -1,6 +1,6 @@
 name: HungerGames
 main: com.herocraft.hungergames.HungerGamesPlugin
-version: 1.1.0
+version: 1.2.0
 api-version: '1.21'
 author: zzaee
 description: Hunger Games "battle royale" avec zones jamais reutilisees sur un monde normal.
@@ -11,7 +11,7 @@ commands:
     usage: /hg <join|leave|kit|arenas|unspectate>
   hgadmin:
     description: Commandes admin du Hunger Games
-    usage: /hgadmin <...>
+    usage: /hgadmin <zone|kit|reload|list>
     permission: hungergames.admin
 
 permissions:

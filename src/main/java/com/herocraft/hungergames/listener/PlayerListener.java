@@ -2,17 +2,20 @@ package com.herocraft.hungergames.listener;
 
 import com.herocraft.hungergames.HungerGamesPlugin;
 import com.herocraft.hungergames.arena.Arena;
+import com.herocraft.hungergames.arena.ArenaState;
 import com.herocraft.hungergames.kit.KitSelectorGUI;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 
 import java.util.List;
+import java.util.Optional;
 
 public class PlayerListener implements Listener {
 
@@ -38,6 +41,29 @@ public class PlayerListener implements Listener {
     @EventHandler
     public void onRespawn(PlayerRespawnEvent event) {
         event.setRespawnLocation(plugin.getArenaManager().getHubLocation());
+    }
+
+    /**
+     * Garde la barre de faim pleine en permanence tant qu'aucune partie n'est
+     * activement en cours pour ce joueur : au hub, dans une salle d'attente
+     * d'arène (avant le scatter), ou en spectateur. Seuls le farm/la période
+     * de grâce et le PVP laissent la faim évoluer normalement.
+     */
+    @EventHandler
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        Optional<Arena> arenaOpt = plugin.getArenaManager().getArenaOf(player);
+        boolean activeRound = arenaOpt.isPresent()
+                && (arenaOpt.get().getState() == ArenaState.GRACE_PERIOD || arenaOpt.get().getState() == ArenaState.PVP);
+        if (activeRound) {
+            return;
+        }
+        event.setCancelled(true);
+        if (player.getFoodLevel() < 20) {
+            player.setFoodLevel(20);
+        }
+        player.setSaturation(20f);
     }
 
     @EventHandler
