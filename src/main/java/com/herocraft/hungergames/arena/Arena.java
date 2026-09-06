@@ -5,7 +5,10 @@ import com.herocraft.hungergames.kit.Kit;
 import com.herocraft.hungergames.util.RandomLocationUtil;
 import com.herocraft.hungergames.util.ScoreboardUtil;
 import com.herocraft.hungergames.util.SpectatorItems;
+import com.herocraft.hungergames.util.WaitingRoomItems;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.title.Title;
 import org.bukkit.GameMode;
@@ -29,9 +32,10 @@ public class Arena {
 
     private final HungerGamesPlugin plugin;
     private final UUID id = UUID.randomUUID();
+    private String name;
     private final World world;
-    private final ZoneAllocator.Zone zone;
-    private final Location lobbyLocation;
+    private ZoneAllocator.Zone zone;
+    private Location lobbyLocation;
 
     private ArenaState state = ArenaState.PRELOADING;
     private final Set<UUID> players = new LinkedHashSet<>();
@@ -43,42 +47,121 @@ public class Arena {
     private BukkitTask countdownTask;
     private BukkitTask graceTask;
     private BukkitTask shrinkTask;
+    private BukkitTask scoreboardTask;
     private int countdownSecondsLeft;
+    private boolean forcedStart = false;
+    private boolean destroyed = false;
 
-    public Arena(HungerGamesPlugin plugin, World world, ZoneAllocator.Zone zone) {
+    public Arena(HungerGamesPlugin plugin, String name, World world, ZoneAllocator.Zone zone) {
         this.plugin = plugin;
+        this.name = name;
         this.world = world;
-        this.zone = zone;
+        setupZone(zone);
+        startScoreboardLoop();
+    }
+
+    /**
+     * (Ré)initialise l'arène sur une nouvelle cellule de la grille : reconstruit la
+     * plateforme de lobby flottante au centre de cette nouvelle zone et met à jour
+     * la position de téléportation du lobby. Appelé à la création de l'arène, puis
+     * à chaque nouveau tour du cycle (voir {@link #cycleToNewZone()}).
+     */
+    private void setupZone(ZoneAllocator.Zone newZone) {
+        this.zone = newZone;
         int lobbyY = plugin.getConfig().getInt("lobby.y", 200);
-        this.lobbyLocation = new Location(world, zone.centerX() + 0.5, lobbyY, zone.centerZ() + 0.5);
+        this.lobbyLocation = new Location(world, newZone.centerX() + 0.5, lobbyY, newZone.centerZ() + 0.5);
         buildLobbyPlatform();
     }
 
     /**
      * Construit une petite plateforme flottante (verre) au centre de la zone,
-     * en forçant le chargement du chunk concerné. Le reste de la zone n'est
-     * préchargé qu'ensuite, de façon asynchrone, via {@link #startPreload()}.
+     * entourée d'une cage de blocs barrière (sol invisible + murs) pour empêcher
+     * les joueurs en attente d'en tomber ou de s'en éloigner en marchant. Cette
+     * cage est retirée au lancement de la partie (voir {@link #removeLobbyCage()}),
+     * puisque les joueurs sont alors téléportés ailleurs et que les spectateurs
+     * doivent pouvoir voler librement dans toute la zone.
      */
     private void buildLobbyPlatform() {
         int radius = plugin.getConfig().getInt("lobby.radius", 8);
         int lobbyY = plugin.getConfig().getInt("lobby.y", 200);
+        int cageMargin = plugin.getConfig().getInt("lobby.cage-margin", 3);
+        int cageRadius = radius + cageMargin;
         world.getChunkAt(zone.centerX() >> 4, zone.centerZ() >> 4);
 
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dz = -radius; dz <= radius; dz++) {
-                if (dx * dx + dz * dz <= radius * radius) {
-                    world.getBlockAt(zone.centerX() + dx, lobbyY - 1, zone.centerZ() + dz)
-                            .setType(org.bukkit.Material.GLASS, false);
+        for (int dx = -cageRadius; dx <= cageRadius; dx++) {
+            for (int dz = -cageRadius; dz <= cageRadius; dz++) {
+                double d2 = (double) dx * dx + (double) dz * dz;
+                org.bukkit.block.Block floor = world.getBlockAt(zone.centerX() + dx, lobbyY - 1, zone.centerZ() + dz);
+                if (d2 <= (double) radius * radius) {
+                    floor.setType(org.bukkit.Material.GLASS, false);
+                } else if (d2 <= (double) cageRadius * cageRadius) {
+                    // Sol invisible entre le bord de la plateforme et le mur, pour qu'on
+                    // ne puisse jamais tomber entre les deux.
+                    floor.setType(org.bukkit.Material.BARRIER, false);
                 }
             }
         }
         world.getBlockAt(zone.centerX(), lobbyY - 1, zone.centerZ()).setType(org.bukkit.Material.SEA_LANTERN, false);
+
+        int cageHeight = plugin.getConfig().getInt("lobby.cage-height", 5);
+        for (int dx = -cageRadius; dx <= cageRadius; dx++) {
+            for (int dz = -cageRadius; dz <= cageRadius; dz++) {
+                double d = Math.sqrt((double) dx * dx + (double) dz * dz);
+                if (d >= cageRadius - 1.5 && d <= cageRadius + 0.5) {
+                    for (int dy = 0; dy <= cageHeight; dy++) {
+                        world.getBlockAt(zone.centerX() + dx, lobbyY - 1 + dy, zone.centerZ() + dz)
+                                .setType(org.bukkit.Material.BARRIER, false);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Retire la cage de blocs barrière autour de la plateforme de lobby (appelé au
+     * lancement de la partie). Le verre de la plateforme elle-même reste en place.
+     */
+    private void removeLobbyCage() {
+        int radius = plugin.getConfig().getInt("lobby.radius", 8);
+        int lobbyY = plugin.getConfig().getInt("lobby.y", 200);
+        int cageMargin = plugin.getConfig().getInt("lobby.cage-margin", 3);
+        int cageRadius = radius + cageMargin;
+        int cageHeight = plugin.getConfig().getInt("lobby.cage-height", 5);
+
+        for (int dx = -cageRadius; dx <= cageRadius; dx++) {
+            for (int dz = -cageRadius; dz <= cageRadius; dz++) {
+                for (int dy = -1; dy <= cageHeight; dy++) {
+                    org.bukkit.block.Block b = world.getBlockAt(zone.centerX() + dx, lobbyY - 1 + dy, zone.centerZ() + dz);
+                    if (b.getType() == org.bukkit.Material.BARRIER) {
+                        b.setType(org.bukkit.Material.AIR, false);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Configure les dégâts de bordure : ~1 cœur (2 PV) par seconde dès qu'on est
+     * hors de la bordure, sans zone tampon (le vanilla par défaut laisse quelques
+     * blocs de marge avant de faire mal).
+     */
+    private static void configureBorderDamage(WorldBorder border) {
+        border.setDamageAmount(2.0);
+        border.setDamageBuffer(0.0);
     }
 
     // ---------------------------------------------------------------- getters
 
     public UUID getId() {
         return id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public ArenaState getState() {
@@ -106,7 +189,7 @@ public class Arena {
     }
 
     public boolean isJoinable() {
-        return (state == ArenaState.PRELOADING || state == ArenaState.WAITING || state == ArenaState.STARTING) && !isFull();
+        return (state == ArenaState.WAITING || state == ArenaState.STARTING) && !isFull();
     }
 
     /** Une arène se regarde en spectateur une fois la partie lancée (farm ou PVP). */
@@ -146,11 +229,21 @@ public class Arena {
                 Player p = org.bukkit.Bukkit.getPlayer(uuid);
                 if (p != null) {
                     preloadBar.removePlayer(p);
-                    p.sendMessage(Component.text("La zone est prête, choisis ton kit avec /hg kit !", NamedTextColor.GREEN));
+                    p.sendMessage(kitSuggestionMessage("La zone est prête, "));
                 }
             }
             checkStartConditions();
         });
+    }
+
+    /** Message cliquable invitant à ouvrir le menu de sélection de kit. */
+    private Component kitSuggestionMessage(String prefix) {
+        return Component.text(prefix, NamedTextColor.GREEN)
+                .append(Component.text("choisis ton kit avec ", NamedTextColor.GREEN))
+                .append(Component.text("/hg kit", NamedTextColor.YELLOW)
+                        .clickEvent(ClickEvent.runCommand("/hg kit"))
+                        .hoverEvent(HoverEvent.showText(Component.text("Clique pour ouvrir le menu des kits", NamedTextColor.GRAY))))
+                .append(Component.text(" !", NamedTextColor.GREEN));
     }
 
     // ---------------------------------------------------------------- joueurs
@@ -161,10 +254,26 @@ public class Arena {
         if (state == ArenaState.PRELOADING && preloadBar != null) {
             preloadBar.addPlayer(player);
         }
+
+        WorldBorder border = org.bukkit.Bukkit.createWorldBorder();
+        border.setCenter(zone.centerX() + 0.5, zone.centerZ() + 0.5);
+        border.setSize(zone.size());
+        configureBorderDamage(border);
+        player.setWorldBorder(border);
+
+        player.getInventory().clear();
+        player.getInventory().setItem(0, WaitingRoomItems.createKitSelectorItem(plugin));
+        player.getInventory().setItem(4, WaitingRoomItems.createLeaveItem(plugin));
+        player.setFoodLevel(20);
+        player.setSaturation(20f);
+
         player.teleport(lobbyLocation);
         player.setGameMode(GameMode.ADVENTURE);
         refreshScoreboard(player);
         broadcast(Component.text(player.getName() + " a rejoint la partie (" + players.size() + "/" + getMaxPlayers() + ")", NamedTextColor.YELLOW));
+        if (state != ArenaState.PRELOADING) {
+            player.sendMessage(kitSuggestionMessage(""));
+        }
         checkStartConditions();
     }
 
@@ -175,7 +284,7 @@ public class Arena {
         if (preloadBar != null) preloadBar.removePlayer(player);
         player.setScoreboard(org.bukkit.Bukkit.getScoreboardManager().getMainScoreboard());
 
-        if (state == ArenaState.STARTING && players.size() < getMinPlayers()) {
+        if (state == ArenaState.STARTING && !forcedStart && players.size() < getMinPlayers()) {
             cancelCountdown("Pas assez de joueurs.");
         }
         if ((state == ArenaState.GRACE_PERIOD || state == ArenaState.PVP)) {
@@ -253,7 +362,7 @@ public class Arena {
         broadcast(Component.text("La partie démarre dans " + countdownSecondsLeft + " secondes !", NamedTextColor.GOLD));
 
         countdownTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (players.size() < getMinPlayers()) {
+            if (!forcedStart && players.size() < getMinPlayers()) {
                 cancelCountdown("Pas assez de joueurs.");
                 return;
             }
@@ -278,11 +387,52 @@ public class Arena {
             countdownTask.cancel();
             countdownTask = null;
         }
+        forcedStart = false;
         state = ArenaState.WAITING;
         broadcast(Component.text("Décompte annulé : " + reason, NamedTextColor.RED));
     }
 
+    /**
+     * Force le lancement de la partie, même en dessous du nombre minimum de joueurs
+     * configuré (utilisé par /hgadmin zone forcestart).
+     */
+    public boolean forceStart() {
+        if (state != ArenaState.WAITING || players.isEmpty()) return false;
+        forcedStart = true;
+        startCountdown();
+        return true;
+    }
+
+    /**
+     * Arrête définitivement l'arène (suppression admin) : contrairement à une fin de
+     * partie normale, la zone n'est pas reprise pour un nouveau tour — elle est
+     * régénérée puis relâchée dans le pool, et l'arène elle-même est détruite.
+     */
+    public void forceCancel(String reason) {
+        if (destroyed) return;
+        destroyed = true;
+        state = ArenaState.ENDED;
+        if (countdownTask != null) countdownTask.cancel();
+        if (graceTask != null) graceTask.cancel();
+        if (shrinkTask != null) shrinkTask.cancel();
+        if (scoreboardTask != null) scoreboardTask.cancel();
+
+        Component message = Component.text("Partie annulée : " + reason, NamedTextColor.RED);
+        for (UUID uuid : players) {
+            Player p = org.bukkit.Bukkit.getPlayer(uuid);
+            if (p == null) continue;
+            p.sendMessage(message);
+            plugin.getArenaManager().sendToHub(p);
+        }
+        if (preloadBar != null) preloadBar.removeAll();
+        removeAllSpectators();
+        plugin.getArenaManager().onArenaEnded(this);
+        regenerateAndRelease(zone);
+    }
+
     private void beginGame() {
+        removeLobbyCage();
+
         int marginBlocks = plugin.getConfig().getInt("zone.scatter-margin", 40);
         double minDistance = plugin.getConfig().getDouble("game.scatter.min-distance-between-players", 20);
 
@@ -308,6 +458,7 @@ public class Arena {
             WorldBorder border = org.bukkit.Bukkit.createWorldBorder();
             border.setCenter(zone.centerX() + 0.5, zone.centerZ() + 0.5);
             border.setSize(zone.size());
+            configureBorderDamage(border);
             p.setWorldBorder(border);
 
             p.sendMessage(Component.text("La partie commence ! PVP désactivé pendant " +
@@ -317,8 +468,6 @@ public class Arena {
         state = ArenaState.GRACE_PERIOD;
         int graceSeconds = plugin.getConfig().getInt("game.grace-period-seconds", 300);
         graceTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, this::endGracePeriod, graceSeconds * 20L);
-
-        startScoreboardLoop();
     }
 
     private void giveKit(Player player, Kit kit) {
@@ -351,7 +500,7 @@ public class Arena {
             if (p == null) continue;
             WorldBorder border = p.getWorldBorder();
             if (border == null) continue;
-            border.setSize(targetDiameter, durationSeconds * 20L);
+            border.setSize(targetDiameter, durationSeconds);
         }
         broadcast(Component.text("La zone jouable va se refermer vers le centre !", NamedTextColor.RED));
     }
@@ -400,14 +549,55 @@ public class Arena {
 
         if (preloadBar != null) preloadBar.removeAll();
         removeAllSpectators();
-        plugin.getArenaManager().onArenaEnded(this);
+        plugin.getArenaManager().onRoundEnded(this);
+        cycleToNewZone();
+    }
+
+    /**
+     * Fin normale d'une partie : l'arène ne se détruit PAS. Elle se réinitialise,
+     * tire une nouvelle cellule libre au hasard dans le pool (forcément différente de
+     * l'ancienne, puisque celle-ci reste "tenue" tant qu'elle n'est pas régénérée),
+     * reconstruit son lobby dessus et relance le préchargement — prête à accueillir
+     * une nouvelle partie. L'ancienne zone, elle, est régénérée en arrière-plan puis
+     * relâchée dans le pool pour qu'une autre arène (ou celle-ci, plus tard) puisse
+     * la reprendre.
+     */
+    private void cycleToNewZone() {
+        if (destroyed) return;
+        ZoneAllocator.Zone oldZone = this.zone;
+
+        players.clear();
+        alive.clear();
+        spectators.clear();
+        selectedKits.clear();
+        forcedStart = false;
+        countdownSecondsLeft = 0;
+
+        ZoneAllocator.Zone newZone = plugin.getArenaManager().getZoneAllocator().allocateRandomFreeCell();
+        setupZone(newZone);
+        startPreload();
+        plugin.getArenaManager().savePersistedArenas();
+
+        regenerateAndRelease(oldZone);
+    }
+
+    /** Régénère une zone en arrière-plan (annule les dégâts/constructions de la partie), puis la relâche dans le pool. */
+    private void regenerateAndRelease(ZoneAllocator.Zone oldZone) {
+        ZoneAllocator allocator = plugin.getArenaManager().getZoneAllocator();
+        int chunksPerTick = plugin.getConfig().getInt("zone.regen-chunks-per-tick", 2);
+        ZoneRegenerator regenerator = new ZoneRegenerator(plugin, chunksPerTick);
+        regenerator.regenerate(world, oldZone, (done, total) -> {
+        }, () -> {
+            allocator.release(oldZone);
+            plugin.getLogger().info("Cellule (" + oldZone.cellX() + "," + oldZone.cellZ() + ") régénérée et relâchée dans le pool.");
+        });
     }
 
     // ---------------------------------------------------------------- scoreboard
 
     private void startScoreboardLoop() {
-        org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (state == ArenaState.ENDED) return;
+        scoreboardTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (destroyed) return;
             for (UUID uuid : players) {
                 Player p = org.bukkit.Bukkit.getPlayer(uuid);
                 if (p != null) refreshScoreboard(p);
@@ -421,7 +611,7 @@ public class Arena {
 
     private void refreshScoreboard(Player viewer) {
         List<String> lines = new java.util.ArrayList<>();
-        lines.add("§7Zone: §f" + zone.cellX() + "," + zone.cellZ());
+        lines.add("§7Zone: §f" + name);
         lines.add("§7Joueurs: §f" + players.size() + "/" + getMaxPlayers());
         lines.add("§7Vivants: §f" + alive.size());
         if (!spectators.isEmpty()) {
@@ -435,7 +625,18 @@ public class Arena {
             case PVP -> lines.add("§cPVP activé !");
             case ENDED -> lines.add("§7Partie terminée");
         }
-        ScoreboardUtil.update(viewer, "§c§lHUNGER GAMES", lines);
+
+        // Masque les pseudos au-dessus des têtes pendant la partie active seulement.
+        java.util.List<String> hiddenNameTags = java.util.List.of();
+        if (state == ArenaState.GRACE_PERIOD || state == ArenaState.PVP) {
+            hiddenNameTags = new java.util.ArrayList<>();
+            for (UUID uuid : players) {
+                Player p = org.bukkit.Bukkit.getPlayer(uuid);
+                if (p != null) hiddenNameTags.add(p.getName());
+            }
+        }
+
+        ScoreboardUtil.update(viewer, "§c§lHUNGER GAMES", lines, hiddenNameTags);
     }
 
     private void broadcast(Component message) {

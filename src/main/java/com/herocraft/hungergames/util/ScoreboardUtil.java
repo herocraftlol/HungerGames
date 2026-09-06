@@ -9,11 +9,14 @@ import org.bukkit.scoreboard.ScoreboardManager;
 import org.bukkit.scoreboard.Team;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
  * Construit et met à jour un tableau de score latéral individuel pour un joueur,
- * avec des équipes vides pour éviter les doublons de lignes identiques.
+ * avec des équipes vides pour éviter les doublons de lignes identiques, et permet
+ * en option de masquer le pseudo au-dessus de la tête de certains joueurs (pour ce
+ * viewer précis, puisque chaque joueur a son propre scoreboard).
  */
 public final class ScoreboardUtil {
 
@@ -21,6 +24,10 @@ public final class ScoreboardUtil {
     }
 
     public static void update(Player player, String title, List<String> lines) {
+        update(player, title, lines, List.of());
+    }
+
+    public static void update(Player player, String title, List<String> lines, Collection<String> hideNameTagsOf) {
         ScoreboardManager manager = org.bukkit.Bukkit.getScoreboardManager();
         if (manager == null) return;
 
@@ -58,6 +65,16 @@ public final class ScoreboardUtil {
             lineIndex++;
         }
 
+        if (!hideNameTagsOf.isEmpty()) {
+            Team hiddenTags = board.registerNewTeam("hg_hidden_tags");
+            hiddenTags.setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.NEVER);
+            for (String name : hideNameTagsOf) {
+                if (!board.getEntries().contains(name)) {
+                    hiddenTags.addEntry(name);
+                }
+            }
+        }
+
         player.setScoreboard(board);
     }
 
@@ -69,3 +86,4 @@ public final class ScoreboardUtil {
         return sb.toString();
     }
 }
+

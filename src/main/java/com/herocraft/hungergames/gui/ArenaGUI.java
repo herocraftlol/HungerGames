@@ -9,6 +9,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -19,16 +20,20 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * GUI listant toutes les arènes de Hunger Games actuellement actives (quel que soit
- * leur état) et permettant :
- * - de rejoindre une arène encore ouverte (PRELOADING/WAITING/STARTING, pas pleine)
- * - de regarder une arène déjà lancée en mode spectateur (GRACE_PERIOD/PVP)
- * - via un bouton dédié, de rejoindre/créer automatiquement une partie disponible
+ * GUI listant toutes les zones de Hunger Games créées par les administrateurs
+ * (voir {@code /hgadmin zone create}) et permettant :
+ * - de rejoindre une zone ouverte (WAITING/STARTING, pas pleine — PAS pendant
+ *   le préchargement, voir {@link Arena#isJoinable()})
+ * - de regarder une zone déjà lancée en mode spectateur (GRACE_PERIOD/PVP)
+ * - via un bouton dédié, de rejoindre directement une zone disponible au hasard
  *
- * Comme les arènes sont créées dynamiquement (contrairement à des arènes préconfigurées
- * avec un nom fixe), l'ordre d'affichage suit simplement l'ordre de création
- * (voir {@link com.herocraft.hungergames.arena.ArenaManager#getArenasOrdered()}), et
- * chaque arène est identifiée par sa position dans cette liste pour un clic donné.
+ * Le contenu de l'inventaire est réactualisé en direct pour tous les joueurs
+ * qui l'ont ouvert (voir {@link #refreshOpenViewers()}, appelé chaque seconde
+ * par une tâche répétitive), sans fermer/rouvrir leur inventaire.
+ *
+ * L'ordre d'affichage suit l'ordre de création des zones (voir
+ * {@link com.herocraft.hungergames.arena.ArenaManager#getArenasOrdered()}), et
+ * chaque zone est identifiée par sa position dans cette liste pour un clic donné.
  */
 public class ArenaGUI {
 
@@ -49,22 +54,32 @@ public class ArenaGUI {
         this.plugin = plugin;
     }
 
-    public void open(org.bukkit.entity.Player player) {
+    public void open(Player player) {
         open(player, 0);
     }
 
-    public void open(org.bukkit.entity.Player player, int page) {
+    public void open(Player player, int page) {
         player.openInventory(buildInventory(page));
     }
 
     public Inventory buildInventory(int page) {
         List<Arena> arenas = plugin.getArenaManager().getArenasOrdered();
         int totalPages = Math.max(1, (int) Math.ceil(arenas.size() / (double) PAGE_SIZE));
-        if (page < 0) page = 0;
-        if (page > totalPages - 1) page = totalPages - 1;
+        int clampedPage = Math.max(0, Math.min(page, totalPages - 1));
 
         Inventory inv = Bukkit.createInventory(null, GUI_SIZE,
-                LegacyComponentSerializer.legacySection().deserialize(titleFor(page, totalPages)));
+                LegacyComponentSerializer.legacySection().deserialize(titleFor(clampedPage, totalPages)));
+        populateInventory(inv, clampedPage);
+        return inv;
+    }
+
+    /**
+     * Réécrit le contenu d'un inventaire déjà ouvert (sans le remplacer) pour
+     * refléter l'état actuel des zones. Utilisé aussi bien à l'ouverture qu'au
+     * rafraîchissement périodique.
+     */
+    private void populateInventory(Inventory inv, int page) {
+        List<Arena> arenas = plugin.getArenaManager().getArenasOrdered();
 
         int start = page * PAGE_SIZE;
         int end = Math.min(arenas.size(), start + PAGE_SIZE);
@@ -77,14 +92,27 @@ public class ArenaGUI {
             inv.setItem(i, filler);
         }
 
+        int totalPages = Math.max(1, (int) Math.ceil(arenas.size() / (double) PAGE_SIZE));
         inv.setItem(SLOT_PREV_PAGE, page > 0 ? buildPageButton(false) : filler);
         ItemStack randomBtn = buildRandomButton(arenas);
         for (int i = SLOT_RANDOM_START; i <= SLOT_RANDOM_END; i++) {
             inv.setItem(i, randomBtn);
         }
         inv.setItem(SLOT_NEXT_PAGE, page < totalPages - 1 ? buildPageButton(true) : filler);
+    }
 
-        return inv;
+    /**
+     * Rafraîchit en direct le contenu de ce GUI pour tous les joueurs qui l'ont
+     * actuellement ouvert (nombre de joueurs, état, nombre de zones...), sans
+     * fermer leur inventaire. À appeler périodiquement (voir HungerGamesPlugin).
+     */
+    public void refreshOpenViewers() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            String title = LegacyComponentSerializer.legacySection().serialize(player.getOpenInventory().title());
+            if (!isArenaGuiTitle(title)) continue;
+            int page = parsePageFromTitle(title);
+            populateInventory(player.getOpenInventory().getTopInventory(), page);
+        }
     }
 
     private String titleFor(int page, int totalPages) {
@@ -103,18 +131,23 @@ public class ArenaGUI {
         boolean spectatable = arena.isSpectatable();
 
         if (joinable) {
-            mat = state == ArenaState.PRELOADING ? Material.YELLOW_STAINED_GLASS_PANE : Material.LIME_STAINED_GLASS_PANE;
-            displayName = "§a§l✔ Zone (" + arena.getZone().cellX() + "," + arena.getZone().cellZ() + ")";
-            statusLine = state == ArenaState.PRELOADING ? "§eChargement de la zone..." : "§aEn attente de joueurs";
+            mat = Material.LIME_STAINED_GLASS_PANE;
+            displayName = "§a§l✔ " + arena.getName();
+            statusLine = "§aEn attente de joueurs";
             statusColor = "§a";
         } else if (spectatable) {
             mat = Material.RED_STAINED_GLASS_PANE;
-            displayName = "§c§l⚔ Zone (" + arena.getZone().cellX() + "," + arena.getZone().cellZ() + ")";
+            displayName = "§c§l⚔ " + arena.getName();
             statusLine = "§cPartie en cours";
             statusColor = "§c";
+        } else if (state == ArenaState.PRELOADING) {
+            mat = Material.YELLOW_STAINED_GLASS_PANE;
+            displayName = "§e§l⏳ " + arena.getName();
+            statusLine = "§eChargement de la zone...";
+            statusColor = "§e";
         } else {
             mat = Material.GRAY_STAINED_GLASS_PANE;
-            displayName = "§7✖ Zone (" + arena.getZone().cellX() + "," + arena.getZone().cellZ() + ")";
+            displayName = "§7✖ " + arena.getName();
             statusLine = "§7Indisponible";
             statusColor = "§7";
         }
@@ -138,6 +171,8 @@ public class ArenaGUI {
             lore.add(Component.text("▶ Clique pour rejoindre !", NamedTextColor.YELLOW));
         } else if (spectatable) {
             lore.add(Component.text("\uD83D\uDC41 Clique pour regarder en spectateur !", NamedTextColor.AQUA));
+        } else if (state == ArenaState.PRELOADING) {
+            lore.add(Component.text("Pas encore rejoignable, reviens dans un instant.", NamedTextColor.YELLOW));
         } else {
             lore.add(Component.text("✖ Indisponible", NamedTextColor.RED));
         }
@@ -154,20 +189,20 @@ public class ArenaGUI {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
 
-        meta.displayName(Component.text("✦ Rejoindre / créer une partie", NamedTextColor.GOLD, TextDecoration.BOLD));
+        meta.displayName(Component.text("✦ Rejoindre une partie aléatoire", NamedTextColor.GOLD, TextDecoration.BOLD));
         List<Component> lore = new ArrayList<>();
         lore.add(Component.empty());
         lore.add(Component.text("Te place automatiquement dans une", NamedTextColor.GRAY));
-        lore.add(Component.text("partie disponible, ou en crée une", NamedTextColor.GRAY));
-        lore.add(Component.text("nouvelle sur une zone jamais utilisée.", NamedTextColor.GRAY));
+        lore.add(Component.text("zone disponible parmi celles créées", NamedTextColor.GRAY));
+        lore.add(Component.text("par les administrateurs.", NamedTextColor.GRAY));
         lore.add(Component.empty());
         if (joinableCount > 0) {
             lore.add(Component.text(joinableCount + " partie(s) disponible(s)", NamedTextColor.GREEN));
+            lore.add(Component.empty());
+            lore.add(Component.text("▶ Clique pour jouer !", NamedTextColor.YELLOW));
         } else {
-            lore.add(Component.text("Aucune partie ouverte, une nouvelle sera créée.", NamedTextColor.GRAY));
+            lore.add(Component.text("Aucune partie ouverte pour le moment.", NamedTextColor.RED));
         }
-        lore.add(Component.empty());
-        lore.add(Component.text("▶ Clique pour jouer !", NamedTextColor.YELLOW));
 
         meta.lore(lore);
         item.setItemMeta(meta);

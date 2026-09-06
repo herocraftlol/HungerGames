@@ -1,174 +1,186 @@
+<div align="center">
+
 # 🏆 HungerGames
 
-> Plugin Minecraft **Paper 1.21** — Battle royale "à l'ancienne", sur un monde réel généré, avec des zones **jamais réutilisées**.
+### Plugin battle royale *à l'ancienne* pour serveurs **Paper 1.21**
 
-![Version](https://img.shields.io/badge/version-1.1.0-green)
-![Paper](https://img.shields.io/badge/Paper-1.21-blue?logo=minecraft)
+*Spawns dispersés sur une vraie map générée · arènes persistantes qui tournent en boucle · bordures de zone individuelles par joueur · mode spectateur complet · GUI d'arènes dynamique · lobby central procédural · kits configurables.*
 
----
-
-## 🎮 C'est quoi HungerGames ?
-
-HungerGames est un plugin de **battle royale "à l'ancienne"** pour serveurs **Paper 1.21**. Les joueurs apparaissent dispersés sur une vraie map générée — pas de coffres ni de scénario façon jeu de plateau—et chaque partie utilise une **nouvelle zone jamais réutilisée** du monde.
-
-Le principe repose sur une mécanique originale : le plugin découpe le monde en **grandes cellules carrées** et alloue à chaque partie la **prochaine cellule jamais utilisée**, retrouvée par une recherche en spirale à partir du centre du monde. Une fois qu'une zone a servi, elle est marquée dans `plugins/HungerGames/zones.yml` et **ne sera plus jamais réutilisée** : chaque partie se joue donc sur un terrain intact, sans traces des parties précédentes.
-
-Le plugin inclut aussi un **GUI d'arènes dynamique** et un **mode spectateur**, pour suivre les parties en cours sans interférer.
+</div>
 
 ---
 
-## ✨ Fonctionnement
+## 🎮 Qu'est-ce que c'est ?
 
-1. **`/hg join`** — rejoint une arène disponible, ou en crée une nouvelle.
-   - À la création, le plugin alloue automatiquement la **prochaine cellule de grille jamais utilisée** — taille configurable 1000×1000 par défaut, soit un rayon de 500 blocs.
-   - Une petite **plateforme de verre** est construite immédiatement au centre de la zone, en l'air — `lobby.y` configurable — elle sert de lobby pour cette partie.
-   - Le reste de la zone — jusqu'à ~4000 chunks pour 1000×1000 — est préchargé et généré **en arrière-plan**, avec une **barre de progression** visible par les joueurs en attente.
-2. **`/hg kit`** — ouvre un menu de sélection de **kit** avant le lancement. Les admins peuvent configurer des kits — épée en pierre, pioche en bois, arc et flèches... — qui donnent un simple avantage de départ.
-3. Dès que le nombre minimum de joueurs est atteint **et** que la zone est prête, un **compte à rebours** démarre — `game.countdown-seconds`.
-4. Au lancement, chaque joueur est **téléporté à un point aléatoire** dispersé dans la zone — distance minimale entre joueurs configurable —, reçoit son kit, et une **bordure de monde personnelle** — Paper per-player `WorldBorder` — est posée sur les limites de la zone.
-5. Pendant la **période de grâce** — `game.grace-period-seconds`,5 min par défaut — le PVP est désactivé, les joueurs peuvent farmer tranquillement.
-6. Une fois la période de grâce terminée : le **PVP est activé**, et si `game.border.shrink.enabled` est à `true`, la bordure se referme progressivement vers le centre pour **forcer les joueurs à se regrouper**.
-7. Le **dernier survivant** remporte la partie ! Tout le monde est renvoyé au hub, l'arène est détruite, mais la zone reste marquée comme utilisée **pour toujours** — `zones.yml`.
+**HungerGames** est un plugin Minecraft qui transforme votre serveur Paper 1.21 en arène de battle royale "à l'ancienne", dans l'esprit des Hunger Games d'origine : pas de plateau ni de coffres scénarisés, **une vraie carte générée par Minecraft**, des joueurs dispersés au compte à rebours, puis un seul survivant.
 
-Les joueurs éliminés basculent automatiquement en **spectateur** de leur propre arène (bordure de zone conservée, retour au hub à la fin de la partie).
+Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans un grand pool de cellules, ce qui garantit que **deux parties ne se jouent jamais au même endroit**. À la fin d'une partie, la zone est régénérée puis remise dans le pool ; l'arène continue ensuite immédiatement sur une nouvelle cellule, sans intervention de l'admin.
 
 ---
 
-## 👁️ Mode spectateur et GUI d'arènes
+## ✨ Fonctionnalités principales
 
-Inspiré de HikaBrain, `/hg arenas` (alias `/hg gui`) ouvre un inventaire **54 slots, paginé** qui liste **toutes les arènes actives**, quel que soit leur état :
-
-- 🟢/🟡 **Arène en chargement ou en attente** : clic pour **rejoindre directement** cette partie précise.
-- 🔴 **Arène en période de grâce ou PVP en cours** : clic pour la **regarder en spectateur** — `GameMode.SPECTATOR`, téléportation sur la plateforme du lobby, avec une bordure de monde personnelle calée sur la zone.
-- 🎲 **Bouton central "Rejoindre / créer une partie"** : place automatiquement le joueur dans une partie ouverte, ou en crée une nouvelle si aucune n'est disponible.
-
-Chaque spectateur reçoit une **boussole** (slot 8) : un clic suffit pour repartir instantanément — `/hg unspectate` — et il est impossible de la lâcher ou de la déplacer dans son inventaire.
+| Catégorie | Ce que vous obtenez |
+|---|---|
+| 🌍 **Zones jamais réutilisées** | Pool de ~10 000 cellules autour du hub ; tirage aléatoire à chaque partie, régénération automatique des zones jouées. |
+| 🏗️ **Arènes persistantes** | Créez une arène nommée, elle tourne en boucle sous ce nom tant que vous ne la supprimez pas. Persistance des cellules dans `arenas.yml` à travers les redémarrages. |
+| 🧊 **Lobby flottant sécurisé** | Plateforme de verre au centre de chaque zone, entourée d'une cage de barrières invisibles pendant l'attente (retirée au lancement). |
+| 🚧 **Bordures par joueur** | Chaque arène applique une `WorldBorder` *individuelle* à ses participants — plusieurs arènes peuvent tourner simultanément sans interférer. |
+| 👁️ **Mode spectateur complet** | Suivez n'importe quelle partie en `SPECTATOR`, téléporté sur le lobby de la zone avec la bordure appliquée. |
+| 🗂️ **GUI d'arènes dynamique** | Inventaire 54-slots, paginé, qui liste toutes les zones avec couleur selon l'état (vert = rejoignable, jaune = chargement, rouge = en cours). Mise à jour en temps réel. |
+| 🏛️ **Lobby central procédural** | `/hgadmin hub build` construit un plaza, des collines, des montagnes, un campement, une entrée de mine, et des **PNJ villageois** qui ouvrent le GUI d'arènes. |
+| 🎒 **Kits configurables** | 4 kits par défaut (Guerrier, Bucheron, Mineur, Archer), entièrement éditables via `/hgadmin kit ...`. |
+| 📦 **Confort** | Inventaire vidé à chaque retour au hub, faim toujours pleine hors partie, pseudos masqués pendant la partie, scatter intelligent (pas de spawn en pleine mer), suggestions cliquables. |
+| ⌨️ **Complétion `TAB`** | `/hg` et `/hgadmin` proposent contextuellement les sous-commandes, noms de zones et identifiants de kits. |
 
 ---
 
-## 📦 Installation
+## 🚀 Installation
 
-1. Télécharger le `.jar` depuis les [releases](../../releases) — ou compiler le plugin — voir ci-dessous.
-2. Copier `hungergames-1.1.0.jar` dans le dossier `plugins/` de votre serveur **Paper 1.21.x**.
-3. Redémarrer le serveur. Le plugin génère automatiquement `config.yml`, `kits.yml` et `zones.yml` dans `plugins/HungerGames/`.
+1. Téléchargez `hungergames-1.2.0.jar` depuis la [release v1.2.0](../../releases/latest).
+2. Copiez-le dans le dossier `plugins/` de votre serveur **Paper 1.21.x**.
+3. (Re)démarrez le serveur : `config.yml` et `kits.yml` sont générés automatiquement.
+4. Éditez `world` dans `config.yml` pour cibler le monde vanilla généré que vous voulez utiliser.
+5. Construisez votre lobby avec `/hgadmin hub build`, puis créez votre première arène : `/hgadmin zone create maZone1`.
 
-### Compilation
+⚠️ Le plugin dépend de `paper-api` ; il ne fonctionnera **pas** sur Spigot/CraftBukkit vanilla (la régénération de chunks et la `WorldBorder` par joueur sont spécifiques à Paper).
+
+---
+
+## 📖 Guide rapide
+
+### Cycle de vie d'une arène
+
+1. **Création** — `/hgadmin zone create <nom>` : tirage d'une cellule libre, construction du lobby flottant, préchargement asynchrone des chunks.
+2. **Attente** — L'arène reste ouverte ; les joueurs la rejoignent via `/hg join <nom>` ou le GUI.
+3. **Lancement** — Dès que `min-players` est atteint et que la zone est prête, un compte à rebours démarre (ou `/hgadmin zone forcestart <nom>`).
+4. **Partie** — Scatter aléatoire → période de grâce sans PVP → PVP → bordure qui se referme vers le centre.
+5. **Fin & cycle** — L'arène tire immédiatement une **nouvelle** cellule (forcément différente), reconstruit son lobby, et redevient jouable. L'ancienne zone est régénérée en arrière-plan puis relâchée dans le pool.
+
+### Commandes joueur
+
+```
+/hg join [nom]    Rejoindre une arène par son nom (ou une au hasard)
+/hg leave         Quitter la partie (ou le mode spectateur)
+/hg kit           Choisir un kit
+/hg arenas        Ouvrir le GUI listant toutes les arènes (alias : /hg gui)
+/hg unspectate    Quitter le mode spectateur
+```
+
+### Commandes admin (`hungergames.admin`, op par défaut)
+
+```
+/hgadmin zone create <nom>       Créer une nouvelle arène persistante
+/hgadmin zone delete <nom>       Supprimer définitivement une arène
+/hgadmin zone rename <a> <b>     Renommer une arène
+/hgadmin zone list               Lister toutes les arènes et leur état
+/hgadmin zone info <nom>         Détails (cellule, joueurs, spectateurs...)
+/hgadmin zone tp <nom>           Téléportation au lobby de l'arène
+/hgadmin zone forcestart <nom>   Forcer le démarrage d'une partie
+
+/hgadmin hub build               Construire (ou reconstruire) le lobby central
+/hgadmin hub delete              Supprimer le lobby construit
+
+/hgadmin kit create <id> <nom>   Créer un kit
+/hgadmin kit delete <id>         Supprimer un kit
+/hgadmin kit additem <id>        Ajouter l'item en main au kit
+/hgadmin kit seticon <id>        Définir l'item en main comme icône
+/hgadmin kit list                Lister les kits
+
+/hgadmin reload                  Recharger config.yml et kits.yml
+/hgadmin list                    Nombre d'arènes actives / cellules du pool occupées
+```
+
+---
+
+## 🆕 Nouveautés de la version 1.2.0
+
+La 1.2.0 est une mise à jour majeure qui transforme le plugin d'un simple « système de zones » en une expérience complète clé-en-main :
+
+### 🏛️ Lobby central procédural (`/hgadmin hub build`)
+Fini le lobby vide : la commande construit un vrai mini-village autour du spawn — plaza circulaire en quartz, collines herbeuses qui montent en montagnes enneigées, arbres, fleurs, un petit campement (feu de camp, table de craft, coffre, four, bottes de foin), et une **entrée de mine creusée** dans un flanc de colline avec minerais apparents. Un **mur de barrières invisibles** doublé de la `WorldBorder` du hub empêche quiconque de s'en égarer.
+
+### 🧑‍🌾 PNJ « Rejoindre une arène »
+3 ou 5 (configurable) pupitres en bloc d'émeraude alignés face au spawn, chacun surmonté d'un villageois figé (sans IA, invulnérable). Un clic droit dessus ouvre le même GUI que `/hg gui`.
+
+### ♻️ Cycle automatique des arènes
+Les arènes nommées tournent désormais **en continu** : à chaque fin de partie, la zone jouée est régénérée en arrière-plan (`World#regenerateChunk`, étalé pour préserver le TPS) puis relâchée dans le pool, et l'arène tire immédiatement une nouvelle cellule. Plus besoin de recréer une arène à chaque fois.
+
+### 💾 Persistance des arènes
+Chaque arène sauvegarde sa cellule actuelle dans `plugins/HungerGames/arenas.yml`. Au redémarrage du plugin, toutes les arènes sont automatiquement recréées sur leur cellule (et leur préchargement relancé) — sans intervention manuelle.
+
+### 🎒 Items de salle d'attente
+Chaque joueur en attente reçoit automatiquement une **épée en pierre** (slot 1, ouvre `/hg kit`) et un **bloc barrière** (slot 5, exécute `/hg leave`), tous deux protégés contre le drop et le déplacement.
+
+### 👁️ Mode spectateur amélioré
+- Boussole de spectateur (slot 8) protégée contre le drop/le déplacement, comme dans HikaBrain.
+- Spectateurs automatiquement déplacés en `GameMode.SPECTATOR` à leur mort, avec la bordure de la zone appliquée pour ne pas pouvoir voler au-delà.
+- Bouton central « Rejoindre une partie aléatoire » dans le GUI.
+
+### 🪧 Cage de lobby dynamique
+La plateforme flottante est entourée d'une cage de barrières pendant l'attente (impossible d'en tomber ou de s'en éloigner en marchant). La cage est **automatiquement retirée** au lancement de la partie pour que les spectateurs puissent voler librement dans toute la zone.
+
+### 🎯 Scatter intelligent (`RandomLocationUtil`)
+Les points de spawn sont désormais rejetés s'ils tombent dans l'eau, la glace ou la lave — fini les apparitions en plein océan. Repli progressif de la distance minimale entre joueurs si la zone est trop densément aquatique.
+
+### 👤 Pseudos masqués pendant la partie
+Pendant `GRACE_PERIOD` et `PVP`, le pseudo au-dessus de la tête de chaque participant est masqué via une équipe de scoreboard dédiée (`NAME_TAG_VISIBILITY = NEVER`), puis restauré à la fin.
+
+### 📊 GUI d'arènes en temps réel
+Une tâche répétitive rafraîchit le contenu de l'inventaire toutes les secondes sans le fermer/rouvrir — le nombre de joueurs et l'état des zones restent à jour en direct.
+
+### 🛡️ Divers conforts
+- Inventaire vidé à chaque retour au hub ou à chaque entrée d'arène.
+- Faim toujours pleine hors partie active (annule les pertes et remet la barre à 20).
+- `WorldBorder` configurée avec `damageBuffer = 0` et `damageAmount = 2.0` (1 cœur/seconde hors limites, sans marge par défaut).
+- Une zone en cours de préchargement apparaît en jaune « Chargement... » dans le GUI et n'est ni cliquable pour rejoindre, ni proposée par `/hg join` ou le bouton aléatoire tant qu'elle n'est pas prête.
+
+---
+
+## ⚙️ Configuration (`config.yml`)
+
+Les réglages les plus importants sont commentés en français dans le fichier. Quelques points clés :
+
+- **`world`** : le monde vanilla (généré, pas plat) où les zones sont allouées.
+- **`hub.x / hub.y / hub.z`** : centre du hub borné (par défaut `0.5, 100, 0.5`).
+- **`hub.radius`** : rayon du hub en blocs (défaut 100, soit de -100 à 100 en X/Z).
+- **`hub.build.radius`** : rayon de la zone décorée par `/hgadmin hub build` (40 par défaut).
+- **`hub.build.npc-count`** : nombre de PNJ « rejoindre une arène » (1 à 7, 1 par défaut).
+- **`zone.size`** : diamètre d'une zone (1000 par défaut = rayon 500).
+- **`zone.pool-radius-cells`** : rayon du pool en nombre de cellules (50 par défaut, ~10 000 cellules possibles).
+- **`zone.chunks-per-tick`** : vitesse de préchargement (8 par défaut).
+- **`zone.regen-chunks-per-tick`** : vitesse de régénération en fin de partie (2 par défaut, plus conservateur).
+- **`lobby.cage-margin`** / **`lobby.cage-height`** : géométrie de la cage du lobby flottant.
+- **`game.min-players`** / **`game.max-players`** : seuils de joueurs par arène.
+- **`game.grace-period-seconds`** : durée sans PVP après le scatter (300 par défaut).
+- **`game.border.shrink.*`** : rétrécissement de la bordure après la période de grâce.
+
+---
+
+## 🔨 Compilation
 
 ```bash
 mvn clean package
 ```
 
-Le jar est généré dans `target/hungergames-1.1.0.jar`.
+Le jar est généré dans `target/hungergames-1.2.0.jar`.
 
-> ⚠️ Paper 1.21 a migré une partie du système d'Attributs — `Attribute` — vers un `Registry`. Le code utilise une API compatible sur la plupart des builds 1.21.1.
-
----
-
-## 🕹️ Commandes
-
-### Joueurs
-
-| Commande | Description |
-|-----------|-------------|
-| `/hg join` | Rejoindre une partie — ou en créer une nouvelle |
-| `/hg leave` | Quitter la partie en cours — ou le mode spectateur |
-| `/hg kit` | Ouvrir le menu de sélection des kits |
-| `/hg arenas` | Ouvrir le GUI des parties actives — alias `/hg gui` |
-| `/hg unspectate` | Quitter le mode spectateur |
-
-### Admin — `hungergames.admin`, op par défaut
-
-| Commande | Description |
-|-----------|-------------|
-| `/hgadmin reload` | Recharge `config.yml` et `kits.yml` |
-| `/hgadmin list` | Nombre d'arènes actives / zones déjà utilisées |
-| `/hgadmin kit create <id> <nom>` | Crée un nouveau kit |
-| `/hgadmin kit delete <id>` | Supprime un kit existant |
-| `/hgadmin kit additem <id>` | Ajoute l'item en main au contenu du kit |
-| `/hgadmin kit seticon <id>` | Définit l'item en main comme icône du kit dans le menu |
-| `/hgadmin kit list` | Liste tous les kits disponibles |
+> **Note API Paper 1.21.1** : la régénération de chunks (`World#regenerateChunk`) est une API **spécifique à Paper** — elle lève une exception sur Spigot/CraftBukkit vanilla. C'est pour cela que le plugin dépend de `paper-api` et pas de `bukkit-api`.
 
 ---
 
-## ⚙️ Configuration — `config.yml`
+## 📜 Limitations connues & pistes d'amélioration
 
-| Option | Description |
-|--------|-------------|
-| `world` | Monde — généré, pas plat — dans lequel les arènes sont créées |
-| `zone.size` | Diamètre d'une zone en blocs — 1000 = rayon 500 |
-| `zone.scatter-margin` | Marge de sécurité à l'intérieur de la bordure pour le scatter |
-| `zone.chunks-per-tick` | Chunks chargés/générés par tick pendant le préchargement |
-| `lobby.y` | Hauteur de la plateforme flottante de lobby |
-| `lobby.radius` | Rayon de la plateforme de lobby |
-| `game.min-players` | Nombre minimum de joueurs pour lancer la partie |
-| `game.max-players` | Nombre maximum de joueurs — jusqu'à 100 |
-| `game.countdown-seconds` | Durée du compte à rebours avant le lancement |
-| `game.grace-period-seconds` | Durée sans PVP après le scatter |
-| `game.scatter.min-distance-between-players` | Distance minimale entre les joueurs au scatter |
-| `game.border.shrink.*` | Rétrécissement progressif de la bordure après la période de grâce |
+- La régénération vanilla recalcule le terrain à partir du générateur du monde : toute construction permanente dans une cellule du pool sera perdue à la première régénération. Les zones du pool doivent rester de la nature « brute ».
+- La taille d'une zone (`zone.size`) est globale à tout le pool ; impossible d'avoir des arènes de tailles différentes sans changer la config pour tout le monde.
+- Le « mid » de la map n'est pas matérialisé par une structure — c'est simplement le centre géométrique de la zone (le lobby flottant est juste au-dessus).
+- Pas de système d'alliance in-game : comme demandé, ça reste au niveau des messages privés entre joueurs, en dehors du plugin.
+- La complétion `TAB` propose les noms de zones/kits déjà existants et les sous-commandes, mais ne valide pas qu'un nouveau nom n'est pas déjà pris.
 
 ---
 
-## 🆕 Nouveautés en 1.1.0
+## 📝 Licence & crédits
 
-- 👁️ **Mode spectateur** : regarde n'importe quelle partie en cours — `GameMode.SPECTATOR`, bordure de zone personnelle, téléportation sur le lobby.
-- 🗂️ **GUI d'arènes dynamique** : `/hg arenas` — liste toutes les parties actives, pagination, clic pour rejoindre ou regarder.
-- 🧭 **Boussole de sortie** : un item avec clic pour quitter le spectateur instantanément, inposable à lâcher ou déplacer.
-- 🔄 **Éliminés → spectateurs** : les joueurs morts basculent automatiquement en spectateur de leur arène.
-- 🎮 **Vraie map générée** : pas de plateau, le terrain est généré naturellement à chaque partie.
-- 🎯 **Zones jamais réutilisées** : allocation automatique par recherche en spirale, persistance dans `zones.yml`.
-- ⏳ **Préchargement asynchrone** des chunks avec barre de progression visible.
-- 🗺️ **Bordure par joueur** : chaque participant voit sa propre `WorldBorder`.
-- 🛡️ **Période de grâce** : PVP désactivé au début, pour farmer en paix.
-- 📉 **Bordure rétrécissante** : la zone jouable se referme progressivement pour forcer les confrontations.
-- 🎒 **Kits configurables** avec menu de sélection graphique—GUI—, gestion complète par commandes admin.
+Plugin écrit pour la communauté francophone HungerGames. Développé par **zzaee**.
 
----
-
-## 📁 Structure du projet
-
-```
-src/main/java/com/herocraft/hungergames/
-├── HungerGamesPlugin.java          # Classe principale—JavaPlugin
-├── arena/                           # Gestion des arènes, zones et préchargement
-│   ├── Arena.java
-│   ├── ArenaManager.java
-│   ├── ArenaState.java
-│   ├── ChunkPreloader.java
-│   └── ZoneAllocator.java
-├── command/                         # Commandes joueur et admin
-│   ├── HGCommand.java
-│   └── HGAdminCommand.java
-├── gui/                             # GUI des arènes actives
-│   ├── ArenaGUI.java
-│   └── ArenaGUIListener.java
-├── kit/                             # Système de kits
-│   ├── Kit.java
-│   ├── KitManager.java
-│   └── KitSelectorGUI.java
-├── listener/                        # Écouteurs d'événements
-│   ├── PlayerListener.java
-│   ├── CombatListener.java
-│   └── SpectatorListener.java
-└── util/                            # Utilitaires
-    ├── RandomLocationUtil.java
-    ├── ScoreboardUtil.java
-    └── SpectatorItems.java
-```
-
----
-
-## ❗ Limitations connues / pistes d'amélioration
-
-- Le hub — point de retour hors partie — est un point fixe dans le même monde — `hub.x/y/z` — pensezà construire une petite zone de spawn sûre à ces coordonnées.
-- Le "mid" de la map n'est pas matérialisé par une structure : c'est le centre géométrique de la zone — le lobby flottant est juste au-dessus.
-- Pas de système d'alliance in-game : les alliances se font au niveau des messages privés entre joueurs, en dehors du plugin.
-- Le fichier `zones.yml` grossit indéfiniment — une ligne par partie jouée —, c'est voulu pour garantir zéro réutilisation, mais pensezà surveiller sa taille sur le très long terme.
-
----
-
-## 📄 Licence
-
-Ce projet est publié sous licence **MIT**.
-
-© herocraftlol — HungerGames
+Suggestions, bugs, pull requests : ouvrez une [issue](../../issues) sur le dépôt.

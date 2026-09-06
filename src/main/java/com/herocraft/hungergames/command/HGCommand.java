@@ -6,9 +6,15 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
-public class HGCommand implements CommandExecutor {
+import java.util.ArrayList;
+import java.util.List;
+
+public class HGCommand implements CommandExecutor, TabCompleter {
+
+    private static final List<String> SUBCOMMANDS = List.of("join", "leave", "kit", "arenas", "gui", "unspectate");
 
     private final HungerGamesPlugin plugin;
 
@@ -24,12 +30,18 @@ public class HGCommand implements CommandExecutor {
         }
 
         if (args.length == 0) {
-            player.sendMessage(Component.text("/hg join | leave | kit | arenas | unspectate", NamedTextColor.YELLOW));
+            player.sendMessage(Component.text("/hg join [nom] | leave | kit | arenas | unspectate", NamedTextColor.YELLOW));
             return true;
         }
 
         switch (args[0].toLowerCase()) {
-            case "join" -> plugin.getArenaManager().joinPlayer(player);
+            case "join" -> {
+                if (args.length >= 2) {
+                    plugin.getArenaManager().joinPlayerByName(player, args[1]);
+                } else {
+                    plugin.getArenaManager().joinPlayer(player);
+                }
+            }
             case "leave" -> {
                 if (plugin.getArenaManager().getArenaOf(player).isPresent()) {
                     plugin.getArenaManager().leavePlayer(player);
@@ -48,8 +60,34 @@ public class HGCommand implements CommandExecutor {
                 }
                 player.openInventory(plugin.getKitSelectorGUI().build(player));
             }
-            default -> player.sendMessage(Component.text("/hg join | leave | kit | arenas | unspectate", NamedTextColor.YELLOW));
+            default -> player.sendMessage(Component.text("/hg join [nom] | leave | kit | arenas | unspectate", NamedTextColor.YELLOW));
         }
         return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 1) {
+            return filterStartsWith(SUBCOMMANDS, args[0]);
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("join")) {
+            List<String> names = new ArrayList<>();
+            for (var arena : plugin.getArenaManager().getNamedArenasOrdered()) {
+                names.add(arena.getName());
+            }
+            return filterStartsWith(names, args[1]);
+        }
+        return List.of();
+    }
+
+    static List<String> filterStartsWith(List<String> options, String partial) {
+        String lower = partial.toLowerCase();
+        List<String> result = new ArrayList<>();
+        for (String option : options) {
+            if (option.toLowerCase().startsWith(lower)) {
+                result.add(option);
+            }
+        }
+        return result;
     }
 }

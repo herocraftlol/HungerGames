@@ -5,11 +5,14 @@ import com.herocraft.hungergames.command.HGAdminCommand;
 import com.herocraft.hungergames.command.HGCommand;
 import com.herocraft.hungergames.gui.ArenaGUI;
 import com.herocraft.hungergames.gui.ArenaGUIListener;
+import com.herocraft.hungergames.hub.HubNpcListener;
 import com.herocraft.hungergames.kit.KitManager;
 import com.herocraft.hungergames.kit.KitSelectorGUI;
 import com.herocraft.hungergames.listener.CombatListener;
 import com.herocraft.hungergames.listener.PlayerListener;
 import com.herocraft.hungergames.listener.SpectatorListener;
+import com.herocraft.hungergames.listener.WaitingRoomListener;
+import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class HungerGamesPlugin extends JavaPlugin {
@@ -35,10 +38,20 @@ public class HungerGamesPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
         getServer().getPluginManager().registerEvents(new SpectatorListener(this), this);
+        getServer().getPluginManager().registerEvents(new WaitingRoomListener(this), this);
         getServer().getPluginManager().registerEvents(new ArenaGUIListener(this, arenaGUI), this);
+        getServer().getPluginManager().registerEvents(new HubNpcListener(this), this);
 
-        getCommand("hg").setExecutor(new HGCommand(this));
-        getCommand("hgadmin").setExecutor(new HGAdminCommand(this));
+        // Rafraîchit le GUI des arènes toutes les secondes pour les joueurs qui l'ont ouvert.
+        Bukkit.getScheduler().runTaskTimer(this, arenaGUI::refreshOpenViewers, 20L, 20L);
+
+        HGCommand hgCommand = new HGCommand(this);
+        getCommand("hg").setExecutor(hgCommand);
+        getCommand("hg").setTabCompleter(hgCommand);
+
+        HGAdminCommand hgAdminCommand = new HGAdminCommand(this);
+        getCommand("hgadmin").setExecutor(hgAdminCommand);
+        getCommand("hgadmin").setTabCompleter(hgAdminCommand);
 
         getLogger().info("HungerGames activé. Monde: " + getConfig().getString("world", "world"));
     }

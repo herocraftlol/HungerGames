@@ -3,25 +3,54 @@
 world: world
 
 # Point de retour des joueurs quand ils ne sont pas en partie (hub).
+# Le hub est une zone bornée entre -100 et 100 en X et en Z (voir hub.radius) :
+# construis ton lobby/spawn à l'intérieur de ces limites, une bordure de monde
+# personnelle y est automatiquement appliquée à chaque joueur qui y est envoyé.
 hub:
   x: 0.5
   y: 100
   z: 0.5
+  radius: 100
+  # Réglages utilisés par /hgadmin hub build pour construire le lobby procéduralement.
+  build:
+    # Rayon (en blocs) de la zone construite/décorée autour du spawn. Doit rester
+    # inférieur à hub.radius - 5 (sinon il est automatiquement réduit).
+    radius: 40
+    # Nombre de pupitres de PNJ "rejoindre une arène" en face du spawn (1 à 7).
+    npc-count: 1
+    # Distance (en blocs) entre le spawn et la rangée de PNJ.
+    npc-distance: 18
 
 zone:
-  # Taille (diametre) d'une zone en blocs. 1000 => rayon 500 depuis le centre de la zone.
+  # Taille (diametre) d'une zone en blocs, choisie par un administrateur via
+  # /hgadmin zone create <nom> (1000 => rayon 500 depuis le centre de la zone).
+  # Toutes les zones créées/tirées partagent cette même taille (grille régulière).
   size: 1000
+  # Rayon du pool de cellules (en NOMBRE DE CELLULES, pas en blocs) autour du centre
+  # du monde, dans lequel une zone aléatoire libre est tirée à chaque fois qu'une
+  # arène a besoin d'une nouvelle zone (création, ou cycle après une partie).
+  # Avec la valeur par défaut (50) et size=1000, le pool couvre environ
+  # 100x100 cellules = jusqu'à -50000..50000 en X/Z, soit largement de quoi faire
+  # tourner de nombreuses arènes en parallèle sans jamais se marcher dessus.
+  pool-radius-cells: 50
   # Marge de securite a l'interieur de la bordure pour le scatter des joueurs (evite de spawn collé au bord).
   scatter-margin: 40
-  # Fichier ou sont stockees les cellules deja utilisees (jamais reutilisees).
-  zones-file: zones.yml
   # Nombre de chunks charges/generes par tick pendant le prechargement d'une zone.
   chunks-per-tick: 8
+  # Nombre de chunks régénérés par tick à la fin d'une partie (annule les dégâts/
+  # constructions faites pendant la partie). Plus lourd que le préchargement,
+  # d'où une valeur plus basse par défaut pour éviter les à-coups de TPS.
+  regen-chunks-per-tick: 2
 
 lobby:
   # Hauteur (Y) de la plateforme flottante de lobby, au centre de chaque zone.
   y: 200
   radius: 8
+  # Marge (en blocs) entre le bord de la plateforme et la cage de blocs barrière
+  # qui empêche d'en tomber/sortir pendant l'attente. Retirée au lancement de la partie.
+  cage-margin: 3
+  # Hauteur (en blocs) des murs de la cage, au-dessus du niveau de la plateforme.
+  cage-height: 5
 
 game:
   min-players: 2

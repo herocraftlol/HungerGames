@@ -1,38 +1,29 @@
 package com.herocraft.hungergames.arena;
 
-import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.plugin.java.JavaPlugin;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
+import java.util.Random;
 import java.util.Set;
 
 /**
- * Découpe le monde en cellules carrées de {@code cellSize} blocs de côté et garantit
- * qu'une cellule n'est jamais réutilisée entre deux parties, même après un redémarrage
- * du serveur (persistance dans un fichier YAML).
+ * Gère un pool de cellules carrées de {@code cellSize} blocs de côté, réparties sur
+ * une grille bornée par {@code poolRadiusCells} cellules autour du centre du monde.
+ * Contrairement à l'ancienne version, une cellule n'est PAS marquée comme utilisée
+ * pour toujours : elle est simplement "tenue" (held) par une arène tant qu'elle
+ * l'utilise, puis relâchée dans le pool une fois régénérée (voir {@link ZoneRegenerator}),
+ * ce qui permet à d'autres arènes (ou la même, au tour suivant) de la reprendre plus tard.
  *
- * Les cellules sont identifiées par leurs coordonnées entières (cellX, cellZ).
- * Le centre en blocs d'une cellule (i, j) est (i * cellSize, j * cellSize).
- * Une recherche en spirale part de (0,0) pour trouver la prochaine cellule libre,
- * ce qui permet d'utiliser un maximum de cellules proches du centre du monde avant
- * de s'étendre vers l'extérieur.
+ * La cellule (0,0) est toujours réservée au hub et n'est donc jamais distribuée.
  */
 public class ZoneAllocator {
 
-    private final JavaPlugin plugin;
-    private final File file;
     private final int cellSize;
-    private final Set<Long> usedCells = new HashSet<>();
+    private final int poolRadiusCells;
+    private final Random random = new Random();
+    private final Set<Long> heldCells = new HashSet<>();
 
-    public ZoneAllocator(JavaPlugin plugin, String fileName, int cellSize) {
-        this.plugin = plugin;
+    public ZoneAllocator(int cellSize, int poolRadiusCells) {
         this.cellSize = cellSize;
-        this.file = new File(plugin.getDataFolder(), fileName);
-        load();
+        this.poolRadiusCells = Math.max(1, poolRadiusCells);
     }
 
     public int getCellSize() {
@@ -40,43 +31,64 @@ public class ZoneAllocator {
     }
 
     private static long key(int cellX, int cellZ) {
-        // Encode deux int (avec signe) sur un long pour servir de clé unique.
         return (((long) cellX) << 32) ^ (cellZ & 0xffffffffL);
     }
 
     /**
-     * Alloue et marque comme utilisée la prochaine cellule libre, en spirale
-     * autour du centre du monde (0,0). La cellule (0,0) est réservée au hub
-     * et n'est donc jamais proposée.
+     * Tire une cellule libre au hasard dans le pool et la marque comme tenue.
+     * Essaie d'abord un tirage aléatoire (rapide tant que le pool n'est pas presque
+     * plein), puis retombe sur un balayage exhaustif si nécessaire pour garantir
+     * qu'une cellule libre est trouvée dès qu'il en existe une.
      */
-    public synchronized Zone allocateNext() {
-        int x = 0, z = 0;
-        int dx = 0, dz = -1;
-        // Nombre de cellules max avant d'abandonner : évite une boucle infinie
-        // si jamais quelque chose tourne mal (pratiquement jamais atteint).
-        int maxSteps = 1_000_000;
+    public synchronized ZoneAllocator.Zone allocateRandomFreeCell() {
+        int span = poolRadiusCells * 2 + 1;
 
-        for (int i = 0; i < maxSteps; i++) {
-            boolean isOrigin = (x == 0 && z == 0);
-            if (!isOrigin && !usedCells.contains(key(x, z))) {
-                markUsed(x, z);
+        for (int attempt = 0; attempt < 500; attempt++) {
+            int x = random.nextInt(span) - poolRadiusCells;
+            int z = random.nextInt(span) - poolRadiusCells;
+            if (x == 0 && z == 0) continue; // réservé au hub
+            if (heldCells.add(key(x, z))) {
                 return toZone(x, z);
             }
-            // Algorithme de spirale carrée classique.
-            if (x == z || (x < 0 && x == -z) || (x > 0 && x == 1 - z)) {
-                int tmp = dx;
-                dx = -dz;
-                dz = tmp;
-            }
-            x += dx;
-            z += dz;
         }
-        throw new IllegalStateException("Impossible de trouver une zone libre (limite atteinte).");
+
+        for (int x = -poolRadiusCells; x <= poolRadiusCells; x++) {
+            for (int z = -poolRadiusCells; z <= poolRadiusCells; z++) {
+                if (x == 0 && z == 0) continue;
+                if (heldCells.add(key(x, z))) {
+                    return toZone(x, z);
+                }
+            }
+        }
+
+        throw new IllegalStateException(
+                "Plus aucune zone libre dans le pool (augmente zone.pool-radius-cells dans config.yml).");
     }
 
-    private void markUsed(int cellX, int cellZ) {
-        usedCells.add(key(cellX, cellZ));
-        save();
+    /** Relâche une cellule dans le pool (à appeler une fois qu'elle a été régénérée). */
+    public synchronized void release(Zone zone) {
+        heldCells.remove(key(zone.cellX(), zone.cellZ()));
+    }
+
+    /**
+     * Réserve une cellule précise (utilisé au redémarrage pour restaurer une arène
+     * sur la cellule qu'elle occupait avant l'arrêt du serveur). Échoue si la
+     * cellule est déjà tenue par quelqu'un d'autre.
+     */
+    public synchronized Zone reserveCell(int cellX, int cellZ) {
+        if (!heldCells.add(key(cellX, cellZ))) {
+            throw new IllegalStateException("Cellule (" + cellX + "," + cellZ + ") déjà tenue.");
+        }
+        return toZone(cellX, cellZ);
+    }
+
+    public synchronized int getHeldCount() {
+        return heldCells.size();
+    }
+
+    public int getPoolCapacity() {
+        int span = poolRadiusCells * 2 + 1;
+        return span * span - 1; // -1 pour la cellule du hub
     }
 
     private Zone toZone(int cellX, int cellZ) {
@@ -85,48 +97,7 @@ public class ZoneAllocator {
         return new Zone(cellX, cellZ, centerX, centerZ, cellSize);
     }
 
-    public int getUsedCount() {
-        return usedCells.size();
-    }
-
-    private void load() {
-        if (!file.exists()) {
-            return;
-        }
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
-        List<String> raw = yaml.getStringList("used");
-        for (String entry : raw) {
-            String[] parts = entry.split(",");
-            if (parts.length != 2) continue;
-            try {
-                int cx = Integer.parseInt(parts[0].trim());
-                int cz = Integer.parseInt(parts[1].trim());
-                usedCells.add(key(cx, cz));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-    }
-
-    private void save() {
-        YamlConfiguration yaml = new YamlConfiguration();
-        List<String> raw = new ArrayList<>();
-        for (Long k : usedCells) {
-            int cx = (int) (k >> 32);
-            int cz = (int) (long) k;
-            raw.add(cx + "," + cz);
-        }
-        yaml.set("used", raw);
-        try {
-            if (!file.getParentFile().exists()) {
-                file.getParentFile().mkdirs();
-            }
-            yaml.save(file);
-        } catch (IOException e) {
-            plugin.getLogger().warning("Impossible de sauvegarder " + file.getName() + " : " + e.getMessage());
-        }
-    }
-
-    /** Représente une zone allouée (cellule de la grille). */
+    /** Représente une cellule du pool, actuellement allouée à une arène. */
     public record Zone(int cellX, int cellZ, int centerX, int centerZ, int size) {
 
         public int radius() {
