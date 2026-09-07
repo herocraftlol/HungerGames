@@ -63,9 +63,17 @@ game:
   border:
     shrink:
       enabled: true
-      # Ne commence a retrecir qu'apres la fin de la periode de grace.
-      target-diameter: 150
-      duration-seconds: 900
+      # Ne commence a retrecir qu'apres la fin de la periode de grace (debut du PVP).
+      # Phase 1 : premiere reduction, comme avant.
+      phase1:
+        target-diameter: 150
+        duration-seconds: 900
+      # Pause entre les deux phases (aucune reduction pendant ce temps).
+      pause-seconds: 300
+      # Phase 2 : reduction finale jusqu'au centre de la zone.
+      phase2:
+        target-diameter: 10
+        duration-seconds: 600
 
 storage:
   kits-file: kits.yml

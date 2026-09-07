@@ -61,7 +61,16 @@ public class CombatListener implements Listener {
             player.getInventory().clear();
             player.setGameMode(GameMode.SPECTATOR);
             player.sendMessage(Component.text("Tu es mort ! Tu passes en mode spectateur.", NamedTextColor.RED));
-            arena.onPlayerDeath(player);
+            arena.onPlayerDeath(player, resolveKiller(player));
         });
+    }
+
+    /** Détermine qui a tué ce joueur (dernier dégât reçu, si infligé par un autre joueur). */
+    private Player resolveKiller(Player victim) {
+        EntityDamageEvent lastDamage = victim.getLastDamageCause();
+        if (lastDamage instanceof EntityDamageByEntityEvent byEntity && byEntity.getDamager() instanceof Player killer) {
+            return killer;
+        }
+        return null;
     }
 }

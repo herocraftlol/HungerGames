@@ -51,6 +51,8 @@ public class Arena {
     private int countdownSecondsLeft;
     private boolean forcedStart = false;
     private boolean destroyed = false;
+    private BorderPhase borderPhase = BorderPhase.NONE;
+    private long borderPhaseEndMillis = 0L;
 
     public Arena(HungerGamesPlugin plugin, String name, World world, ZoneAllocator.Zone zone) {
         this.plugin = plugin;
@@ -492,9 +494,44 @@ public class Arena {
         }
     }
 
+    /**
+     * Enchaîne les phases de réduction de bordure : une première réduction
+     * (comme avant), puis une pause de quelques minutes une fois celle-ci
+     * terminée, puis une réduction finale jusqu'à un tout petit cercle au
+     * centre de la zone. Chaque étape est suivie dans {@link #borderPhase} /
+     * {@link #borderPhaseEndMillis} pour l'affichage dans le tableau de bord
+     * (voir {@link #refreshScoreboard}).
+     */
     private void startBorderShrink() {
-        int targetDiameter = plugin.getConfig().getInt("game.border.shrink.target-diameter", 150);
-        long durationSeconds = plugin.getConfig().getInt("game.border.shrink.duration-seconds", 900);
+        int phase1Target = plugin.getConfig().getInt("game.border.shrink.phase1.target-diameter", 150);
+        long phase1Duration = plugin.getConfig().getInt("game.border.shrink.phase1.duration-seconds", 900);
+        long pauseSeconds = plugin.getConfig().getInt("game.border.shrink.pause-seconds", 300);
+        int phase2Target = plugin.getConfig().getInt("game.border.shrink.phase2.target-diameter", 10);
+        long phase2Duration = plugin.getConfig().getInt("game.border.shrink.phase2.duration-seconds", 600);
+
+        borderPhase = BorderPhase.SHRINKING_1;
+        borderPhaseEndMillis = System.currentTimeMillis() + phase1Duration * 1000L;
+        applyBorderSize(phase1Target, phase1Duration);
+        broadcast(Component.text("La zone jouable commence à se refermer !", NamedTextColor.RED));
+
+        shrinkTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            borderPhase = BorderPhase.PAUSED;
+            borderPhaseEndMillis = System.currentTimeMillis() + pauseSeconds * 1000L;
+            broadcast(Component.text("La zone se stabilise pendant " + (pauseSeconds / 60) + " minutes...", NamedTextColor.YELLOW));
+
+            shrinkTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                borderPhase = BorderPhase.SHRINKING_2;
+                borderPhaseEndMillis = System.currentTimeMillis() + phase2Duration * 1000L;
+                applyBorderSize(phase2Target, phase2Duration);
+                broadcast(Component.text("La zone se referme jusqu'au centre !", NamedTextColor.RED));
+
+                shrinkTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin,
+                        () -> borderPhase = BorderPhase.FINAL, phase2Duration * 20L);
+            }, pauseSeconds * 20L);
+        }, phase1Duration * 20L);
+    }
+
+    private void applyBorderSize(int targetDiameter, long durationSeconds) {
         for (UUID uuid : players) {
             Player p = org.bukkit.Bukkit.getPlayer(uuid);
             if (p == null) continue;
@@ -502,14 +539,38 @@ public class Arena {
             if (border == null) continue;
             border.setSize(targetDiameter, durationSeconds);
         }
-        broadcast(Component.text("La zone jouable va se refermer vers le centre !", NamedTextColor.RED));
+    }
+
+    private static String formatTime(long totalSeconds) {
+        long m = Math.max(0, totalSeconds) / 60;
+        long s = Math.max(0, totalSeconds) % 60;
+        return String.format("%d:%02d", m, s);
+    }
+
+    /** Phase de rétrécissement de bordure en cours, pour l'affichage dans le tableau de bord. */
+    private enum BorderPhase {
+        NONE, SHRINKING_1, PAUSED, SHRINKING_2, FINAL
     }
 
     // ---------------------------------------------------------------- mort / victoire
 
-    public void onPlayerDeath(Player player) {
-        alive.remove(player.getUniqueId());
+    public void onPlayerDeath(Player victim, Player killer) {
+        alive.remove(victim.getUniqueId());
+        announceDeath(victim, killer);
         checkWinCondition();
+    }
+
+    private void announceDeath(Player victim, Player killer) {
+        Component message;
+        if (killer != null && !killer.getUniqueId().equals(victim.getUniqueId())) {
+            message = Component.text(killer.getName(), NamedTextColor.YELLOW)
+                    .append(Component.text(" a éliminé ", NamedTextColor.RED))
+                    .append(Component.text(victim.getName(), NamedTextColor.YELLOW))
+                    .append(Component.text(" !", NamedTextColor.RED));
+        } else {
+            message = Component.text(victim.getName() + " est mort.", NamedTextColor.GRAY);
+        }
+        broadcastToAll(message);
     }
 
     private void checkWinCondition() {
@@ -572,6 +633,7 @@ public class Arena {
         selectedKits.clear();
         forcedStart = false;
         countdownSecondsLeft = 0;
+        borderPhase = BorderPhase.NONE;
 
         ZoneAllocator.Zone newZone = plugin.getArenaManager().getZoneAllocator().allocateRandomFreeCell();
         setupZone(newZone);
@@ -626,6 +688,18 @@ public class Arena {
             case ENDED -> lines.add("§7Partie terminée");
         }
 
+        if (state == ArenaState.PVP) {
+            long remaining = Math.max(0, (borderPhaseEndMillis - System.currentTimeMillis()) / 1000);
+            switch (borderPhase) {
+                case SHRINKING_1 -> lines.add("§cBordure : réduction (" + formatTime(remaining) + ")");
+                case PAUSED -> lines.add("§ePause bordure : " + formatTime(remaining));
+                case SHRINKING_2 -> lines.add("§4Bordure finale : " + formatTime(remaining));
+                case FINAL -> lines.add("§4Bordure au centre !");
+                case NONE -> {
+                }
+            }
+        }
+
         // Masque les pseudos au-dessus des têtes pendant la partie active seulement.
         java.util.List<String> hiddenNameTags = java.util.List.of();
         if (state == ArenaState.GRACE_PERIOD || state == ArenaState.PVP) {
@@ -641,6 +715,15 @@ public class Arena {
 
     private void broadcast(Component message) {
         for (UUID uuid : players) {
+            Player p = org.bukkit.Bukkit.getPlayer(uuid);
+            if (p != null) p.sendMessage(message);
+        }
+    }
+
+    /** Comme {@link #broadcast}, mais touche aussi les spectateurs de cette arène. */
+    private void broadcastToAll(Component message) {
+        broadcast(message);
+        for (UUID uuid : spectators) {
             Player p = org.bukkit.Bukkit.getPlayer(uuid);
             if (p != null) p.sendMessage(message);
         }
