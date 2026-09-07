@@ -58,6 +58,10 @@ game:
   countdown-seconds: 30
   # Duree pendant laquelle le PVP est desactive apres le scatter (farm autorise).
   grace-period-seconds: 300
+  # Duree (secondes) entre la victoire (dernier survivant) et le retour automatique
+  # de tout le monde au hub. Le vainqueur reste en jeu, les autres sont/restent
+  # spectateurs pendant ce délai.
+  end-delay-seconds: 10
   scatter:
     min-distance-between-players: 20
   border:
@@ -77,3 +81,5 @@ game:
 
 storage:
   kits-file: kits.yml
+  # Fichier où sont sauvegardées les victoires de chaque joueur (tableau des scores, /hg top).
+  stats-file: stats.yml

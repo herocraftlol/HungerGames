@@ -4,7 +4,7 @@
 
 ### Plugin battle royale *à l'ancienne* pour serveurs **Paper 1.21**
 
-*Spawns dispersés sur une vraie map générée · arènes persistantes qui tournent en boucle · bordures de zone individuelles par joueur · bordure en deux phases avec kill-feed · mode spectateur complet · GUI d'arènes dynamique · tableau des scores persistant · lobby central procédural · kits configurables.*
+*Spawns dispersés sur une vraie map générée · arènes persistantes qui tournent en boucle · bordures de zone individuelles par joueur · bordure en deux phases avec kill-feed · mur de bordure en particules · mode spectateur complet · GUI d'arènes dynamique · tableau des scores persistant · lobby central procédural · kits configurables.*
 
 </div>
 
@@ -26,6 +26,7 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 | 🏗️ **Arènes persistantes** | Créez une arène nommée, elle tourne en boucle sous ce nom tant que vous ne la supprimez pas. Persistance des cellules dans `arenas.yml` à travers les redémarrages. |
 | 🧊 **Lobby flottant sécurisé** | Plateforme de verre au centre de chaque zone, entourée d'une cage de barrières invisibles pendant l'attente (retirée au lancement). |
 | 🚧 **Bordures par joueur** | Chaque arène applique une `WorldBorder` *individuelle* à ses participants — plusieurs arènes peuvent tourner simultanément sans interférer. |
+| 🧱 **Mur de bordure en particules** | Un rideau de particules rouges entoure la zone jouable à hauteur des yeux — visible par tous, même quand le rendu natif de Paper n'envoie pas le paquet au client. |
 | 📉 **Bordure en deux phases** | Une première réduction, une pause stabilisée, puis une réduction finale jusqu'au centre, **avec la phase et le temps restant affichés en direct dans le tableau de bord**. |
 | 💬 **Kill-feed en jeu** | À chaque mort, un message est envoyé à tous les participants et spectateurs de l'arène : « X a éliminé Y ! » ou « Y est mort. ». |
 | 👁️ **Mode spectateur complet** | Suivez n'importe quelle partie en `SPECTATOR`, téléporté sur le lobby de la zone avec la bordure appliquée. |
@@ -33,14 +34,14 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 | 🏛️ **Lobby central procédural** | `/hgadmin hub build` construit un plaza, des collines, des montagnes, un campement, une entrée de mine, des **PNJ villageois** qui ouvrent le GUI d'arènes, et un **PNJ dédié au tableau des scores**. |
 | 🏆 **Tableau des scores persistant** | Chaque victoire est enregistrée dans `stats.yml` ; ouvrez le classement à tout moment avec `/hg top` (alias `/hg scores`) ou clic droit sur le PNJ trophée du hub — classement en têtes de joueurs, médailles 🥇🥈🥉, persistant à travers les redémarrages. |
 | 🎒 **Kits configurables** | 4 kits par défaut (Guerrier, Bucheron, Mineur, Archer), entièrement éditables via `/hgadmin kit ...`. |
-| 📦 **Confort** | Inventaire vidé à chaque retour au hub, faim toujours pleine hors partie, pseudos masqués pendant la partie, scatter intelligent (pas de spawn en pleine mer), suggestions cliquables. |
+| 📦 **Confort** | Délai de fin configurable avant le retour automatique au hub, inventaire vidé à chaque retour au hub, faim toujours pleine hors partie, pseudos masqués pendant la partie, scatter intelligent (pas de spawn en pleine mer), suggestions cliquables. |
 | ⌨️ **Complétion `TAB`** | `/hg` et `/hgadmin` proposent contextuellement les sous-commandes, noms de zones et identifiants de kits. |
 
 ---
 
 ## 🚀 Installation
 
-1. Téléchargez `hungergames-1.4.0.jar` depuis la [release v1.4.0](../../releases/latest).
+1. Téléchargez `hungergames-1.5.0.jar` depuis la [release v1.5.0](../../releases/latest).
 2. Copiez-le dans le dossier `plugins/` de votre serveur **Paper 1.21.x**.
 3. (Re)démarrez le serveur : `config.yml` et `kits.yml` sont générés automatiquement.
 4. Éditez `world` dans `config.yml` pour cibler le monde vanilla généré que vous voulez utiliser.
@@ -57,8 +58,8 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 1. **Création** — `/hgadmin zone create <nom>` : tirage d'une cellule libre, construction du lobby flottant, préchargement asynchrone des chunks.
 2. **Attente** — L'arène reste ouverte ; les joueurs la rejoignent via `/hg join <nom>` ou le GUI.
 3. **Lancement** — Dès que `min-players` est atteint et que la zone est prête, un compte à rebours démarre (ou `/hgadmin zone forcestart <nom>`).
-4. **Partie** — Scatter aléatoire → période de grâce sans PVP → PVP → bordure en deux phases (réduction → pause → réduction finale).
-6. **Fin & cycle** — L'arène tire immédiatement une **nouvelle** cellule (forcément différente), reconstruit son lobby, et redevient jouable. L'ancienne zone est régénérée en arrière-plan puis relâchée dans le pool.
+4. **Partie** — Scatter aléatoire → période de grâce sans PVP → PVP → bordure en deux phases (réduction → pause → réduction finale), avec un **mur de particules rouges** visible à chaque bord.
+5. **Fin & cycle** — À la dernière mort, tout le monde reste `end-delay-seconds` secondes (10 par défaut) avant le retour automatique au hub ; le vainqueur reste sur la zone, les autres sont spectateurs. L'arène tire ensuite immédiatement une **nouvelle** cellule (forcément différente), reconstruit son lobby, et redevient jouable. L'ancienne zone est régénérée en arrière-plan puis relâchée dans le pool.
 
 ### Commandes joueur
 
@@ -97,48 +98,36 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 
 ---
 
-## 🆕 Nouveautés de la version 1.4.0
+## 🆕 Nouveautés de la version 1.5.0
 
-La 1.4.0 introduit le **tableau des scores persistant** du hub, pour donner un vrai sens de la progression aux joueurs qui enchaînent les parties : on gagne, on s'inscrit, on grimpe.
+La 1.5.0 est une mise à jour de **confort visuel et de fiabilité de fin de partie** : la bordure est désormais *toujours* visible, et tout le monde a un instant pour savourer la victoire avant de revenir au hub.
 
-### 🏆 Tableau des scores (`/hg top`)
-Chaque victoire d'une partie est désormais **enregistrée** et le serveur garde la mémoire de ses champions à travers les redémarrages :
+### 🧱 Mur de bordure en particules (correction d'un bug Paper)
 
-- 📊 **`/hg top`** (alias `/hg scores`) ouvre un inventaire 27-slots en forme de **trophée** listant les meilleurs joueurs du serveur, du plus grand nombre de victoires au plus petit.
-- 🥇 **Têtes de joueurs** : chaque entrée du classement est la vraie tête Minecraft du joueur, avec son pseudo actuel et son nombre de victoires dans la lore. Les trois premiers ont une **médaille** colorée (or / argent / bronze), les autres sont numérotés `#4`, `#5`, etc.
-- 💾 **Persistance dans `stats.yml`** : tout est sauvegardé dans `plugins/HungerGames/stats.yml` — les pseudos sont mis à jour à chaque victoire pour suivre un joueur même s'il a changé de nom.
-- 🧑‍🌾 **PNJ trophée au hub** : `/hgadmin hub build` place désormais, en plus des PNJ d'arène, un **villageois sur un piédestal en or** (du côté opposé aux PNJ d'arène), qui ouvre directement le classement au clic droit. Plus besoin de retenir la commande — un nouveau joueur la découvre en explorant le hub.
-- 🔁 **Refactor propre** : les kits sont maintenant gérés via une vraie classe `Kit` dédiée (au lieu d'être stockés dans `KitManager`), ce qui rend le code plus simple à lire et à étendre.
+Paper applique par joueur une `WorldBorder` individuelle à chaque participant — c'est ce qui permet à plusieurs arènes de tourner simultanément sans que leurs bordures ne se chevauchent. Mais le rendu client du mur (le « rideau » bleu que Minecraft affiche nativement) **dépend d'un paquet réseau que Paper n'envoie pas toujours** dans cette configuration : bugs ouverts côté PaperMC ([#12372](https://github.com/PaperMC/Paper/issues/12372), [#7748](https://github.com/PaperMC/Paper/issues/7748)). Résultat : la `WorldBorder` limitait bien les déplacements et infligeait les dégâts attendus, mais le mur était souvent **invisible**, et les joueurs dépassaient sans le voir.
 
-Le tout fonctionne dès l'installation : aucune commande supplémentaire n'est nécessaire, le fichier `stats.yml` est créé automatiquement à la première victoire. Pour afficher le classement dans le hub, il suffit de reconstruire le hub avec `/hgadmin hub build` une seule fois (la commande est sûre — elle supprime proprement les anciens PNJ avant d'en reconstruire).
+La 1.5.0 ne se fie plus qu'à son propre rendu :
 
----
+- 🎨 **Rideau de particules `DUST` rouges** (RVB 255/50/50, taille 1.3) dessiné toutes les 10 ticks (2×/seconde) le long des 4 bords de la `WorldBorder` du joueur.
+- 👀 **Visible uniquement quand on s'approche** : le mur n'est dessiné que dans un rayon de 32 blocs autour du joueur sur l'axe X ou Z, ce qui évite de saturer les clients éloignés du bord.
+- 🪜 **Hauteur centrée sur le joueur** : le rideau monte de 4 blocs sous ses pieds et monte jusqu'à 6 blocs au-dessus, pour rester lisible dans les reliefs.
+- ♻️ **Annulé proprement** entre les parties (au reset de l'arène, et au redémarrage du plugin via la chaîne d'annulation existante).
 
-## 🆕 Nouveautés de la version 1.3.0
+Plus de joueurs qui se font éliminer « sans avoir vu la bordure » : le mur est désormais *toujours* là, peu importe la version exacte de Paper.
 
-La 1.3.0 peaufine l'expérience de jeu en pleine partie et la lecture de la fin de match :
+### ⏱️ Délai de fin avant retour au hub (`end-delay-seconds`)
 
-### 📉 Bordure en deux phases avec suivi dans le tableau de bord
-Après la période de grâce, la bordure se referme désormais en **trois temps clairement identifiés** :
+Avant, dès qu'il ne restait plus qu'un survivant, le plugin considérait la partie comme terminée et renvoyait tout le monde au hub quasi instantanément. La 1.5.0 introduit une **fenêtre de victoire configurable** :
 
-1. **Phase 1 — Réduction** : la bordure se contracte depuis les limites de la zone jusqu'à un premier cercle (150 blocs de diamètre par défaut, en 15 minutes).
-2. **Pause** : la zone reste stable pendant 5 minutes par défaut — le temps d'un dernier rush ou de quelques duels bien sentis.
-3. **Phase 2 — Réduction finale** : la bordure se referme jusqu'à un tout petit cercle central (10 blocs de diamètre par défaut, en 10 minutes) pour la confrontation finale.
+- ⏳ Nouveau paramètre **`game.end-delay-seconds`** (10 par défaut) dans `config.yml`.
+- 🏆 À la dernière mort, le vainqueur reste sur la zone le temps de ce délai ; les autres sont (ou restent) spectateurs de l'arène.
+- 🏛️ À la fin du délai, retour automatique de tout le monde au hub, déclenchement de la régénération de la zone, et tirage d'une nouvelle cellule comme avant.
 
-Chaque étape est **affichée en direct dans le tableau de bord** à droite pendant tout le PVP :
-- 🔴 *Bordure : réduction (3:42)* pendant la phase 1
-- 🟡 *Pause bordure : 4:18* pendant la stabilisation
-- 🟥 *Bordure finale : 7:05* pendant la phase 2
-- ⬛ *Bordure au centre !* une fois la zone jouable réduite au minimum
+C'est le moment idéal pour applaudir le vainqueur, prendre un screenshot, ou juste respirer après le rush final.
 
-Les transitions sont annoncées dans le chat (« La zone jouable commence à se refermer ! », « La zone se stabilise pendant 5 minutes... », « La zone se referme jusqu'au centre ! »), et la nouvelle configuration (`game.border.shrink.phase1.*`, `pause-seconds`, `phase2.*`) remplace l'ancienne section unique.
+### 🗂️ Fichier de stats configurable (`stats-file`)
 
-### 💬 Kill-feed dans le chat
-À chaque mort, **tous les participants et spectateurs de l'arène** reçoivent un message lisible dans le chat :
-- *« X a éliminé Y ! »* si la mort vient d'un coup porté par un autre joueur (le dernier dégât reçu par la victime est analysé pour identifier le tueur).
-- *« Y est mort. »* pour les morts environnementales (chute, feu, noyade, faim, PvE...).
-
-Plus besoin de regarder la liste des participants pour suivre le déroulé du match — il suffit de lire le chat.
+Le tableau des scores persistait déjà dans `plugins/HungerGames/stats.yml`. Le chemin est désormais exposé dans `config.yml` sous la clé **`stats-file`** (défaut `stats.yml`), pour les serveurs qui préfèrent mutualiser leurs données avec d'autres plugins ou ranger les stats ailleurs.
 
 ---
 
@@ -153,6 +142,13 @@ La 1.4.0 transforme chaque victoire en **progression sauvegardée** et donne enf
 - 💾 **Persistance dans `stats.yml`** : les victoires sont enregistrées dans `plugins/HungerGames/stats.yml` et survivent aux redémarrages du serveur — les pseudos sont mis à jour à chaque victoire pour suivre un joueur même s'il a changé de nom.
 - 🧑‍🌾 **PNJ trophée au hub** : `/hgadmin hub build` place désormais, en plus des PNJ d'arène, un villageois sur un piédestal en or (du côté opposé aux PNJ d'arène) qui ouvre le classement au clic droit.
 - 🔁 **Refactor `Kit`** : les kits sont maintenant gérés via une vraie classe `Kit` dédiée — code plus simple et plus extensible.
+
+### 1.3.0 — Bordure en deux phases avec suivi au tableau de bord & kill-feed
+
+La 1.3.0 peaufine l'expérience de jeu en pleine partie et la lecture de la fin de match :
+
+- 📉 **Bordure en deux phases** : après la période de grâce, la bordure se contracte en trois temps — réduction vers un premier cercle → pause stabilisée → réduction finale jusqu'à un petit cercle central. Chaque étape (durée restante + phase) est affichée en direct dans le tableau de bord à droite pendant tout le PVP.
+- 💬 **Kill-feed dans le chat** : à chaque mort, tous les participants et spectateurs reçoivent « X a éliminé Y ! » pour les morts causées par un autre joueur (analyse du dernier dégât reçu) ou « Y est mort. » pour les morts environnementales.
 
 ### 1.2.0 — Lobby central procédural, cycle auto des arènes, spectateur & confort
 
@@ -203,9 +199,11 @@ Les réglages les plus importants sont commentés en français dans le fichier. 
 - **`lobby.cage-margin`** / **`lobby.cage-height`** : géométrie de la cage du lobby flottant.
 - **`game.min-players`** / **`game.max-players`** : seuils de joueurs par arène.
 - **`game.grace-period-seconds`** : durée sans PVP après le scatter (300 par défaut).
+- **`game.end-delay-seconds`** : délai entre la dernière mort et le retour automatique au hub (10 par défaut).
 - **`game.border.shrink.phase1.*`** : première réduction de la bordure après la période de grâce (diamètre et durée).
 - **`game.border.shrink.pause-seconds`** : durée de la pause stabilisée entre les deux phases.
 - **`game.border.shrink.phase2.*`** : réduction finale jusqu'au centre de la zone (diamètre et durée).
+- **`stats-file`** : chemin du fichier de statistiques (tableau des scores) dans `plugins/HungerGames/` (défaut `stats.yml`).
 
 ---
 
@@ -215,7 +213,7 @@ Les réglages les plus importants sont commentés en français dans le fichier. 
 mvn clean package
 ```
 
-Le jar est généré dans `target/hungergames-1.4.0.jar`.
+Le jar est généré dans `target/hungergames-1.5.0.jar`.
 
 > **Note API Paper 1.21.1** : la régénération de chunks (`World#regenerateChunk`) est une API **spécifique à Paper** — elle lève une exception sur Spigot/CraftBukkit vanilla. C'est pour cela que le plugin dépend de `paper-api` et pas de `bukkit-api`.
 
@@ -227,6 +225,7 @@ Le jar est généré dans `target/hungergames-1.4.0.jar`.
 - La taille d'une zone (`zone.size`) est globale à tout le pool ; impossible d'avoir des arènes de tailles différentes sans changer la config pour tout le monde.
 - Le « mid » de la map n'est pas matérialisé par une structure — c'est simplement le centre géométrique de la zone (le lobby flottant est juste au-dessus).
 - Pas de système d'alliance in-game : comme demandé, ça reste au niveau des messages privés entre joueurs, en dehors du plugin.
+- Le mur de bordure en particules de la 1.5.0 ne remplace pas la `WorldBorder` : il la **complète visuellement**. Les dégâts, la collision et la zone jouable restent gérés par la `WorldBorder` elle-même, comme avant.
 - La complétion `TAB` propose les noms de zones/kits déjà existants et les sous-commandes, mais ne valide pas qu'un nouveau nom n'est pas déjà pris.
 
 ---
