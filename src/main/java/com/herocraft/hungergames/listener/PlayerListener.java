@@ -3,6 +3,7 @@ package com.herocraft.hungergames.listener;
 import com.herocraft.hungergames.HungerGamesPlugin;
 import com.herocraft.hungergames.arena.Arena;
 import com.herocraft.hungergames.arena.ArenaState;
+import com.herocraft.hungergames.gui.LeaderboardGUI;
 import com.herocraft.hungergames.kit.KitSelectorGUI;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.entity.Player;
@@ -69,6 +70,12 @@ public class PlayerListener implements Listener {
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         String title = LegacyComponentSerializer.legacySection().serialize(event.getView().title());
+
+        if (LeaderboardGUI.isLeaderboardTitle(title)) {
+            event.setCancelled(true);
+            return;
+        }
+
         if (!title.equals(KitSelectorGUI.TITLE)) {
             return;
         }

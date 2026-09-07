@@ -4,7 +4,7 @@
 
 ### Plugin battle royale *à l'ancienne* pour serveurs **Paper 1.21**
 
-*Spawns dispersés sur une vraie map générée · arènes persistantes qui tournent en boucle · bordures de zone individuelles par joueur · bordure en deux phases avec kill-feed · mode spectateur complet · GUI d'arènes dynamique · lobby central procédural · kits configurables.*
+*Spawns dispersés sur une vraie map générée · arènes persistantes qui tournent en boucle · bordures de zone individuelles par joueur · bordure en deux phases avec kill-feed · mode spectateur complet · GUI d'arènes dynamique · tableau des scores persistant · lobby central procédural · kits configurables.*
 
 </div>
 
@@ -30,7 +30,8 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 | 💬 **Kill-feed en jeu** | À chaque mort, un message est envoyé à tous les participants et spectateurs de l'arène : « X a éliminé Y ! » ou « Y est mort. ». |
 | 👁️ **Mode spectateur complet** | Suivez n'importe quelle partie en `SPECTATOR`, téléporté sur le lobby de la zone avec la bordure appliquée. |
 | 🗂️ **GUI d'arènes dynamique** | Inventaire 54-slots, paginé, qui liste toutes les zones avec couleur selon l'état (vert = rejoignable, jaune = chargement, rouge = en cours). Mise à jour en temps réel. |
-| 🏛️ **Lobby central procédural** | `/hgadmin hub build` construit un plaza, des collines, des montagnes, un campement, une entrée de mine, et des **PNJ villageois** qui ouvrent le GUI d'arènes. |
+| 🏛️ **Lobby central procédural** | `/hgadmin hub build` construit un plaza, des collines, des montagnes, un campement, une entrée de mine, des **PNJ villageois** qui ouvrent le GUI d'arènes, et un **PNJ dédié au tableau des scores**. |
+| 🏆 **Tableau des scores persistant** | Chaque victoire est enregistrée dans `stats.yml` ; ouvrez le classement à tout moment avec `/hg top` (alias `/hg scores`) ou clic droit sur le PNJ trophée du hub — classement en têtes de joueurs, médailles 🥇🥈🥉, persistant à travers les redémarrages. |
 | 🎒 **Kits configurables** | 4 kits par défaut (Guerrier, Bucheron, Mineur, Archer), entièrement éditables via `/hgadmin kit ...`. |
 | 📦 **Confort** | Inventaire vidé à chaque retour au hub, faim toujours pleine hors partie, pseudos masqués pendant la partie, scatter intelligent (pas de spawn en pleine mer), suggestions cliquables. |
 | ⌨️ **Complétion `TAB`** | `/hg` et `/hgadmin` proposent contextuellement les sous-commandes, noms de zones et identifiants de kits. |
@@ -39,7 +40,7 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 
 ## 🚀 Installation
 
-1. Téléchargez `hungergames-1.3.0.jar` depuis la [release v1.3.0](../../releases/latest).
+1. Téléchargez `hungergames-1.4.0.jar` depuis la [release v1.4.0](../../releases/latest).
 2. Copiez-le dans le dossier `plugins/` de votre serveur **Paper 1.21.x**.
 3. (Re)démarrez le serveur : `config.yml` et `kits.yml` sont générés automatiquement.
 4. Éditez `world` dans `config.yml` pour cibler le monde vanilla généré que vous voulez utiliser.
@@ -66,6 +67,7 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 /hg leave         Quitter la partie (ou le mode spectateur)
 /hg kit           Choisir un kit
 /hg arenas        Ouvrir le GUI listant toutes les arènes (alias : /hg gui)
+/hg top           Ouvrir le tableau des scores des victoires (alias : /hg scores)
 /hg unspectate    Quitter le mode spectateur
 ```
 
@@ -92,6 +94,23 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 /hgadmin reload                  Recharger config.yml et kits.yml
 /hgadmin list                    Nombre d'arènes actives / cellules du pool occupées
 ```
+
+---
+
+## 🆕 Nouveautés de la version 1.4.0
+
+La 1.4.0 introduit le **tableau des scores persistant** du hub, pour donner un vrai sens de la progression aux joueurs qui enchaînent les parties : on gagne, on s'inscrit, on grimpe.
+
+### 🏆 Tableau des scores (`/hg top`)
+Chaque victoire d'une partie est désormais **enregistrée** et le serveur garde la mémoire de ses champions à travers les redémarrages :
+
+- 📊 **`/hg top`** (alias `/hg scores`) ouvre un inventaire 27-slots en forme de **trophée** listant les meilleurs joueurs du serveur, du plus grand nombre de victoires au plus petit.
+- 🥇 **Têtes de joueurs** : chaque entrée du classement est la vraie tête Minecraft du joueur, avec son pseudo actuel et son nombre de victoires dans la lore. Les trois premiers ont une **médaille** colorée (or / argent / bronze), les autres sont numérotés `#4`, `#5`, etc.
+- 💾 **Persistance dans `stats.yml`** : tout est sauvegardé dans `plugins/HungerGames/stats.yml` — les pseudos sont mis à jour à chaque victoire pour suivre un joueur même s'il a changé de nom.
+- 🧑‍🌾 **PNJ trophée au hub** : `/hgadmin hub build` place désormais, en plus des PNJ d'arène, un **villageois sur un piédestal en or** (du côté opposé aux PNJ d'arène), qui ouvre directement le classement au clic droit. Plus besoin de retenir la commande — un nouveau joueur la découvre en explorant le hub.
+- 🔁 **Refactor propre** : les kits sont maintenant gérés via une vraie classe `Kit` dédiée (au lieu d'être stockés dans `KitManager`), ce qui rend le code plus simple à lire et à étendre.
+
+Le tout fonctionne dès l'installation : aucune commande supplémentaire n'est nécessaire, le fichier `stats.yml` est créé automatiquement à la première victoire. Pour afficher le classement dans le hub, il suffit de reconstruire le hub avec `/hgadmin hub build` une seule fois (la commande est sûre — elle supprime proprement les anciens PNJ avant d'en reconstruire).
 
 ---
 
@@ -124,6 +143,16 @@ Plus besoin de regarder la liste des participants pour suivre le déroulé du ma
 ---
 
 ## 🆕 Récapitulatif des versions précédentes
+
+### 1.4.0 — Tableau des scores persistant & PNJ trophée
+
+La 1.4.0 transforme chaque victoire en **progression sauvegardée** et donne enfin au hub un but à explorer :
+
+- 🏆 **Tableau des scores persistant** : `/hg top` (alias `/hg scores`) ouvre un inventaire 27-slots en forme de **trophée** listant les meilleurs joueurs du serveur, du plus grand nombre de victoires au plus petit.
+- 🥇 **Têtes de joueurs avec médailles** : chaque entrée est la vraie tête Minecraft du joueur, avec son pseudo actuel et son nombre de victoires. Les trois premiers reçoivent une médaille (or / argent / bronze).
+- 💾 **Persistance dans `stats.yml`** : les victoires sont enregistrées dans `plugins/HungerGames/stats.yml` et survivent aux redémarrages du serveur — les pseudos sont mis à jour à chaque victoire pour suivre un joueur même s'il a changé de nom.
+- 🧑‍🌾 **PNJ trophée au hub** : `/hgadmin hub build` place désormais, en plus des PNJ d'arène, un villageois sur un piédestal en or (du côté opposé aux PNJ d'arène) qui ouvre le classement au clic droit.
+- 🔁 **Refactor `Kit`** : les kits sont maintenant gérés via une vraie classe `Kit` dédiée — code plus simple et plus extensible.
 
 ### 1.2.0 — Lobby central procédural, cycle auto des arènes, spectateur & confort
 
@@ -186,7 +215,7 @@ Les réglages les plus importants sont commentés en français dans le fichier. 
 mvn clean package
 ```
 
-Le jar est généré dans `target/hungergames-1.3.0.jar`.
+Le jar est généré dans `target/hungergames-1.4.0.jar`.
 
 > **Note API Paper 1.21.1** : la régénération de chunks (`World#regenerateChunk`) est une API **spécifique à Paper** — elle lève une exception sur Spigot/CraftBukkit vanilla. C'est pour cela que le plugin dépend de `paper-api` et pas de `bukkit-api`.
 
