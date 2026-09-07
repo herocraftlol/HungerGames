@@ -5,6 +5,7 @@ import com.herocraft.hungergames.command.HGAdminCommand;
 import com.herocraft.hungergames.command.HGCommand;
 import com.herocraft.hungergames.gui.ArenaGUI;
 import com.herocraft.hungergames.gui.ArenaGUIListener;
+import com.herocraft.hungergames.gui.LeaderboardGUI;
 import com.herocraft.hungergames.hub.HubNpcListener;
 import com.herocraft.hungergames.kit.KitManager;
 import com.herocraft.hungergames.kit.KitSelectorGUI;
@@ -12,6 +13,7 @@ import com.herocraft.hungergames.listener.CombatListener;
 import com.herocraft.hungergames.listener.PlayerListener;
 import com.herocraft.hungergames.listener.SpectatorListener;
 import com.herocraft.hungergames.listener.WaitingRoomListener;
+import com.herocraft.hungergames.stats.StatsManager;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -21,6 +23,8 @@ public class HungerGamesPlugin extends JavaPlugin {
     private KitSelectorGUI kitSelectorGUI;
     private ArenaManager arenaManager;
     private ArenaGUI arenaGUI;
+    private StatsManager statsManager;
+    private LeaderboardGUI leaderboardGUI;
 
     @Override
     public void onEnable() {
@@ -34,6 +38,8 @@ public class HungerGamesPlugin extends JavaPlugin {
         this.kitSelectorGUI = new KitSelectorGUI(kitManager);
         this.arenaManager = new ArenaManager(this);
         this.arenaGUI = new ArenaGUI(this);
+        this.statsManager = new StatsManager(this, getConfig().getString("storage.stats-file", "stats.yml"));
+        this.leaderboardGUI = new LeaderboardGUI(this);
 
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
@@ -75,5 +81,13 @@ public class HungerGamesPlugin extends JavaPlugin {
 
     public ArenaGUI getArenaGUI() {
         return arenaGUI;
+    }
+
+    public StatsManager getStatsManager() {
+        return statsManager;
+    }
+
+    public LeaderboardGUI getLeaderboardGUI() {
+        return leaderboardGUI;
     }
 }

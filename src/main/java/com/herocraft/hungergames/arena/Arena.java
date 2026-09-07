@@ -21,6 +21,7 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -48,6 +49,7 @@ public class Arena {
     private BukkitTask graceTask;
     private BukkitTask shrinkTask;
     private BukkitTask scoreboardTask;
+    private BukkitTask borderDamageTask;
     private int countdownSecondsLeft;
     private boolean forcedStart = false;
     private boolean destroyed = false;
@@ -418,6 +420,7 @@ public class Arena {
         if (graceTask != null) graceTask.cancel();
         if (shrinkTask != null) shrinkTask.cancel();
         if (scoreboardTask != null) scoreboardTask.cancel();
+        if (borderDamageTask != null) borderDamageTask.cancel();
 
         Component message = Component.text("Partie annulée : " + reason, NamedTextColor.RED);
         for (UUID uuid : players) {
@@ -434,6 +437,7 @@ public class Arena {
 
     private void beginGame() {
         removeLobbyCage();
+        removeLobbyPlatform();
 
         int marginBlocks = plugin.getConfig().getInt("zone.scatter-margin", 40);
         double minDistance = plugin.getConfig().getDouble("game.scatter.min-distance-between-players", 20);
@@ -456,6 +460,9 @@ public class Arena {
             }
             p.setHealth(p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getValue());
             p.setFoodLevel(20);
+            p.setLevel(0);
+            p.setExp(0f);
+            p.setTotalExperience(0);
 
             WorldBorder border = org.bukkit.Bukkit.createWorldBorder();
             border.setCenter(zone.centerX() + 0.5, zone.centerZ() + 0.5);
@@ -470,6 +477,49 @@ public class Arena {
         state = ArenaState.GRACE_PERIOD;
         int graceSeconds = plugin.getConfig().getInt("game.grace-period-seconds", 300);
         graceTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, this::endGracePeriod, graceSeconds * 20L);
+
+        // Dégâts manuels hors bordure : le WorldBorder par joueur n'applique pas
+        // toujours fidèlement ses dégâts vanilla, donc on les gère nous-mêmes,
+        // que la bordure soit en train de bouger ou non.
+        borderDamageTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, this::tickBorderDamage, 20L, 20L);
+    }
+
+    /**
+     * Retire la plateforme de lobby elle-même (verre + lanterne marine), en plus
+     * de la cage, au lancement de la partie. Les spectateurs qui viendront
+     * ensuite regarder (mode SPECTATOR, sans gravité) n'ont pas besoin de sol.
+     */
+    private void removeLobbyPlatform() {
+        int radius = plugin.getConfig().getInt("lobby.radius", 8);
+        int lobbyY = plugin.getConfig().getInt("lobby.y", 200);
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                if (dx * dx + dz * dz <= (double) radius * radius) {
+                    world.getBlockAt(zone.centerX() + dx, lobbyY - 1, zone.centerZ() + dz)
+                            .setType(org.bukkit.Material.AIR, false);
+                }
+            }
+        }
+    }
+
+    /** Inflige ~1 cœur (2 PV) à chaque joueur actuellement hors de sa bordure. */
+    private void tickBorderDamage() {
+        for (UUID uuid : players) {
+            if (!alive.contains(uuid)) continue;
+            Player p = org.bukkit.Bukkit.getPlayer(uuid);
+            if (p == null) continue;
+            WorldBorder border = p.getWorldBorder();
+            if (border == null) continue;
+
+            Location center = border.getCenter();
+            double half = border.getSize() / 2.0;
+            Location loc = p.getLocation();
+            double dx = Math.abs(loc.getX() - center.getX());
+            double dz = Math.abs(loc.getZ() - center.getZ());
+            if (dx > half || dz > half) {
+                p.damage(2.0);
+            }
+        }
     }
 
     private void giveKit(Player player, Kit kit) {
@@ -537,7 +587,7 @@ public class Arena {
             if (p == null) continue;
             WorldBorder border = p.getWorldBorder();
             if (border == null) continue;
-            border.setSize(targetDiameter, durationSeconds);
+            border.setSize(targetDiameter, durationSeconds * 1000L);
         }
     }
 
@@ -590,28 +640,45 @@ public class Arena {
         if (countdownTask != null) countdownTask.cancel();
         if (graceTask != null) graceTask.cancel();
         if (shrinkTask != null) shrinkTask.cancel();
+        if (borderDamageTask != null) borderDamageTask.cancel();
 
         Player winner = winnerId != null ? org.bukkit.Bukkit.getPlayer(winnerId) : null;
         Component message = winner != null
                 ? Component.text(winner.getName() + " a gagné la partie !", NamedTextColor.GOLD)
                 : Component.text("Partie terminée, aucun survivant.", NamedTextColor.GOLD);
 
+        int endDelaySeconds = plugin.getConfig().getInt("game.end-delay-seconds", 10);
+
         for (UUID uuid : players) {
             Player p = org.bukkit.Bukkit.getPlayer(uuid);
             if (p == null) continue;
+            boolean isWinner = winner != null && winner.getUniqueId().equals(uuid);
             p.showTitle(Title.title(
-                    winner != null && winner.getUniqueId().equals(uuid)
-                            ? Component.text("VICTOIRE", NamedTextColor.GOLD)
-                            : Component.text("Partie terminée", NamedTextColor.GRAY),
+                    isWinner ? Component.text("VICTOIRE", NamedTextColor.GOLD) : Component.text("Partie terminée", NamedTextColor.GRAY),
                     message));
             p.sendMessage(message);
-            plugin.getArenaManager().sendToHub(p);
+            if (!isWinner) {
+                // Tout le monde sauf le vainqueur passe/reste spectateur pendant les
+                // quelques secondes de fin de partie, avant le retour au hub.
+                p.setGameMode(GameMode.SPECTATOR);
+            }
+        }
+        broadcastToAll(Component.text("Retour au lobby dans " + endDelaySeconds + " secondes...", NamedTextColor.GRAY));
+
+        if (winner != null) {
+            plugin.getStatsManager().addWin(winner.getUniqueId(), winner.getName());
         }
 
-        if (preloadBar != null) preloadBar.removeAll();
-        removeAllSpectators();
-        plugin.getArenaManager().onRoundEnded(this);
-        cycleToNewZone();
+        org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            for (UUID uuid : players) {
+                Player p = org.bukkit.Bukkit.getPlayer(uuid);
+                if (p != null) plugin.getArenaManager().sendToHub(p);
+            }
+            if (preloadBar != null) preloadBar.removeAll();
+            removeAllSpectators();
+            plugin.getArenaManager().onRoundEnded(this);
+            cycleToNewZone();
+        }, endDelaySeconds * 20L);
     }
 
     /**

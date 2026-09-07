@@ -14,7 +14,7 @@ import java.util.List;
 
 public class HGCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> SUBCOMMANDS = List.of("join", "leave", "kit", "arenas", "gui", "unspectate");
+    private static final List<String> SUBCOMMANDS = List.of("join", "leave", "kit", "arenas", "gui", "unspectate", "top");
 
     private final HungerGamesPlugin plugin;
 
@@ -30,7 +30,7 @@ public class HGCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 0) {
-            player.sendMessage(Component.text("/hg join [nom] | leave | kit | arenas | unspectate", NamedTextColor.YELLOW));
+            player.sendMessage(Component.text("/hg join [nom] | leave | kit | arenas | top | unspectate", NamedTextColor.YELLOW));
             return true;
         }
 
@@ -52,6 +52,7 @@ public class HGCommand implements CommandExecutor, TabCompleter {
                 }
             }
             case "arenas", "gui" -> plugin.getArenaGUI().open(player);
+            case "top", "scores" -> plugin.getLeaderboardGUI().open(player);
             case "unspectate" -> plugin.getArenaManager().unspectate(player);
             case "kit" -> {
                 if (plugin.getArenaManager().getArenaOf(player).isEmpty()) {
@@ -60,7 +61,7 @@ public class HGCommand implements CommandExecutor, TabCompleter {
                 }
                 player.openInventory(plugin.getKitSelectorGUI().build(player));
             }
-            default -> player.sendMessage(Component.text("/hg join [nom] | leave | kit | arenas | unspectate", NamedTextColor.YELLOW));
+            default -> player.sendMessage(Component.text("/hg join [nom] | leave | kit | arenas | top | unspectate", NamedTextColor.YELLOW));
         }
         return true;
     }

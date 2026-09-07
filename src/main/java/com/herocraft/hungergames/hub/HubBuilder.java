@@ -41,6 +41,10 @@ public final class HubBuilder {
         return new NamespacedKey(plugin, "hg_arena_npc");
     }
 
+    public static NamespacedKey leaderboardNpcKey(HungerGamesPlugin plugin) {
+        return new NamespacedKey(plugin, "hg_leaderboard_npc");
+    }
+
     public static void build(HungerGamesPlugin plugin, CommandSender sender) {
         World world;
         try {
@@ -147,8 +151,10 @@ public final class HubBuilder {
         Location center = new Location(world, cx, plugin.getConfig().getInt("hub.y", 100), cz);
         Collection<Entity> nearby = world.getNearbyEntities(center, radius, 60, radius);
         NamespacedKey key = npcKey(plugin);
+        NamespacedKey leaderboardKey = leaderboardNpcKey(plugin);
         for (Entity e : nearby) {
-            if (e.getPersistentDataContainer().has(key, PersistentDataType.BYTE)) {
+            if (e.getPersistentDataContainer().has(key, PersistentDataType.BYTE)
+                    || e.getPersistentDataContainer().has(leaderboardKey, PersistentDataType.BYTE)) {
                 e.remove();
             }
         }
@@ -276,6 +282,7 @@ public final class HubBuilder {
                                   int buildRadius, List<int[]> npcOffsets, CommandSender sender) {
         markSpawn(world, cx, cz, groundY);
         placeNpcs(plugin, world, cx, cz, groundY, npcOffsets);
+        placeLeaderboardNpc(plugin, world, cx, cz, groundY);
         placeBaseCamp(world, cx, cz, groundY, npcOffsets);
         placeMineEntrance(world, cx, cz, groundY, buildRadius);
         scatterTrees(world, cx, cz, groundY, buildRadius, npcOffsets);
@@ -317,6 +324,36 @@ public final class HubBuilder {
             });
             npc.teleport(spawnLoc); // s'assure de l'orientation même si Bukkit l'ignore au spawn
         }
+    }
+
+    /**
+     * PNJ du tableau des scores, placé du côté opposé aux PNJ d'arène (sud du
+     * spawn), qui ouvre le classement des victoires (voir {@code /hg top}).
+     */
+    private static void placeLeaderboardNpc(HungerGamesPlugin plugin, World world, int cx, int cz, int groundY) {
+        int oz = 8;
+        int height = computeHillHeight(0, oz, groundY, 999);
+        int x = cx, z = cz + oz;
+
+        world.getBlockAt(x, height, z).setType(Material.GOLD_BLOCK, false);
+        world.getBlockAt(x - 2, height + 1, z).setType(Material.LANTERN, false);
+        world.getBlockAt(x + 2, height + 1, z).setType(Material.LANTERN, false);
+
+        NamespacedKey key = leaderboardNpcKey(plugin);
+        Location spawnLoc = new Location(world, x + 0.5, height + 1, z + 0.5, 180f, 0f);
+        Villager npc = world.spawn(spawnLoc, Villager.class, v -> {
+            v.setAI(false);
+            v.setInvulnerable(true);
+            v.setSilent(true);
+            v.setCollidable(false);
+            v.setPersistent(true);
+            v.setRemoveWhenFarAway(false);
+            v.setProfession(Villager.Profession.CARTOGRAPHER);
+            v.customName(Component.text("🏆 Tableau des scores", NamedTextColor.GOLD));
+            v.setCustomNameVisible(true);
+            v.getPersistentDataContainer().set(key, PersistentDataType.BYTE, (byte) 1);
+        });
+        npc.teleport(spawnLoc);
     }
 
     private static void placeBaseCamp(World world, int cx, int cz, int groundY, List<int[]> npcOffsets) {
