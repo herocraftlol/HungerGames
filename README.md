@@ -4,7 +4,7 @@
 
 ### Plugin battle royale *à l'ancienne* pour serveurs **Paper 1.21**
 
-*Spawns dispersés sur une vraie map générée · arènes persistantes qui tournent en boucle · bordures de zone individuelles par joueur · bordure en deux phases avec kill-feed · mur de bordure en particules · mode spectateur complet · GUI d'arènes dynamique · tableau des scores persistant · lobby central procédural · kits configurables.*
+*Spawns dispersés sur une vraie map générée · arènes persistantes qui tournent en boucle · bordures de zone individuelles par joueur avec dégâts vraiment fiables et réduction vraiment progressive · bordure en deux phases avec kill-feed · mur de bordure en particules · morts invisibles en silence avec boussole de suivi · mode spectateur complet · GUI d'arènes dynamique · tableau des scores persistant · lobby central procédural · kits configurables.*
 
 </div>
 
@@ -24,24 +24,25 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 |---|---|
 | 🌍 **Zones jamais réutilisées** | Pool de ~10 000 cellules autour du hub ; tirage aléatoire à chaque partie, régénération automatique des zones jouées. |
 | 🏗️ **Arènes persistantes** | Créez une arène nommée, elle tourne en boucle sous ce nom tant que vous ne la supprimez pas. Persistance des cellules dans `arenas.yml` à travers les redémarrages. |
-| 🧊 **Lobby flottant sécurisé** | Plateforme de verre au centre de chaque zone, entourée d'une cage de barrières invisibles pendant l'attente (retirée au lancement). |
-| 🚧 **Bordures par joueur** | Chaque arène applique une `WorldBorder` *individuelle* à ses participants — plusieurs arènes peuvent tourner simultanément sans interférer. |
+| 🧊 **Lobby flottant sécurisé, puis entièrement retiré** | Plateforme de verre au centre de chaque zone, entourée d'une cage de barrières invisibles pendant l'attente ; **cage + verre + lanterne marine supprimés dès le lancement** pour libérer l'espace aux spectateurs. |
+| 🚧 **Bordures par joueur, vraiment fiables** | Chaque arène applique une `WorldBorder` *individuelle* à ses participants — plusieurs arènes peuvent tourner simultanément sans interférer. Les dégâts hors-bordure et l'animation de rétrécissement sont gérés manuellement pour rester fluides même quand la `WorldBorder` virtuelle ne s'anime pas côté serveur. |
 | 🧱 **Mur de bordure en particules** | Un rideau de particules rouges entoure la zone jouable à hauteur des yeux — visible par tous, même quand le rendu natif de Paper n'envoie pas le paquet au client. |
-| 📉 **Bordure en deux phases** | Une première réduction, une pause stabilisée, puis une réduction finale jusqu'au centre, **avec la phase et le temps restant affichés en direct dans le tableau de bord**. |
+| 📉 **Bordure en deux phases, vraiment progressive** | Une première réduction, une pause stabilisée, puis une réduction finale jusqu'au centre, **avec la phase et le temps restant affichés en direct dans le tableau de bord**. La taille affichée/utilisée est interpolée manuellement pour rester synchronisée avec le temps annoncé. |
 | 💬 **Kill-feed en jeu** | À chaque mort, un message est envoyé à tous les participants et spectateurs de l'arène : « X a éliminé Y ! » ou « Y est mort. ». |
 | 👁️ **Mode spectateur complet** | Suivez n'importe quelle partie en `SPECTATOR`, téléporté sur le lobby de la zone avec la bordure appliquée. |
+| 🕶️ **Morts vraiment invisibles et silencieux** | Les joueurs éliminés deviennent **invisibles aux vivants** (`hidePlayer`), leur **chat est isolé** entre morts/spectateurs de la même arène, et une **boussole de suivi** leur ouvre un GUI des têtes des joueurs encore en vie pour se téléporter à l'un d'eux. |
 | 🗂️ **GUI d'arènes dynamique** | Inventaire 54-slots, paginé, qui liste toutes les zones avec couleur selon l'état (vert = rejoignable, jaune = chargement, rouge = en cours). Mise à jour en temps réel. |
 | 🏛️ **Lobby central procédural** | `/hgadmin hub build` construit un plaza, des collines, des montagnes, un campement, une entrée de mine, des **PNJ villageois** qui ouvrent le GUI d'arènes, et un **PNJ dédié au tableau des scores**. |
 | 🏆 **Tableau des scores persistant** | Chaque victoire est enregistrée dans `stats.yml` ; ouvrez le classement à tout moment avec `/hg top` (alias `/hg scores`) ou clic droit sur le PNJ trophée du hub — classement en têtes de joueurs, médailles 🥇🥈🥉, persistant à travers les redémarrages. |
 | 🎒 **Kits configurables** | 4 kits par défaut (Guerrier, Bucheron, Mineur, Archer), entièrement éditables via `/hgadmin kit ...`. |
-| 📦 **Confort** | Délai de fin configurable avant le retour automatique au hub, inventaire vidé à chaque retour au hub, faim toujours pleine hors partie, pseudos masqués pendant la partie, scatter intelligent (pas de spawn en pleine mer), suggestions cliquables. |
+| 📦 **Confort** | Délai de fin configurable avant le retour automatique au hub, **XP remise à zéro** au lancement, inventaire vidé à chaque retour au hub, faim toujours pleine hors partie, pseudos masqués pendant la partie, scatter intelligent (pas de spawn en pleine mer), suggestions cliquables. |
 | ⌨️ **Complétion `TAB`** | `/hg` et `/hgadmin` proposent contextuellement les sous-commandes, noms de zones et identifiants de kits. |
 
 ---
 
 ## 🚀 Installation
 
-1. Téléchargez `hungergames-1.5.0.jar` depuis la [release v1.5.0](../../releases/latest).
+1. Téléchargez `hungergames-1.6.0.jar` depuis la [release v1.6.0](../../releases/latest).
 2. Copiez-le dans le dossier `plugins/` de votre serveur **Paper 1.21.x**.
 3. (Re)démarrez le serveur : `config.yml` et `kits.yml` sont générés automatiquement.
 4. Éditez `world` dans `config.yml` pour cibler le monde vanilla généré que vous voulez utiliser.
@@ -57,9 +58,10 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 
 1. **Création** — `/hgadmin zone create <nom>` : tirage d'une cellule libre, construction du lobby flottant, préchargement asynchrone des chunks.
 2. **Attente** — L'arène reste ouverte ; les joueurs la rejoignent via `/hg join <nom>` ou le GUI.
-3. **Lancement** — Dès que `min-players` est atteint et que la zone est prête, un compte à rebours démarre (ou `/hgadmin zone forcestart <nom>`).
-4. **Partie** — Scatter aléatoire → période de grâce sans PVP → PVP → bordure en deux phases (réduction → pause → réduction finale), avec un **mur de particules rouges** visible à chaque bord.
-5. **Fin & cycle** — À la dernière mort, tout le monde reste `end-delay-seconds` secondes (10 par défaut) avant le retour automatique au hub ; le vainqueur reste sur la zone, les autres sont spectateurs. L'arène tire ensuite immédiatement une **nouvelle** cellule (forcément différente), reconstruit son lobby, et redevient jouable. L'ancienne zone est régénérée en arrière-plan puis relâchée dans le pool.
+3. **Lancement** — Dès que `min-players` est atteint et que la zone est prête, un compte à rebours démarre (ou `/hgadmin zone forcestart <nom>`). À T0 : la cage de barrières, la plateforme de verre et la lanterne marine du lobby sont **toutes retirées**, le niveau d'XP de chaque joueur est remis à zéro, et les pseudos au-dessus des têtes sont masqués.
+4. **Partie** — Scatter aléatoire → période de grâce sans PVP → PVP → bordure en deux phases (réduction → pause → réduction finale), avec un **mur de particules rouges** visible à chaque bord et des **dégâts manuels** appliqués si un joueur se retrouve hors bordure.
+5. **Mort en partie** — Le joueur devient spectateur de sa propre arène, devient invisible aux vivants (`hidePlayer`), ne peut plus chatter qu'avec les autres morts/spectateurs, et reçoit une boussole « Suivre un joueur en vie » qui ouvre un GUI listant les têtes des survivants.
+6. **Fin & cycle** — À la dernière mort, tout le monde reste `end-delay-seconds` secondes (10 par défaut) avant le retour automatique au hub ; le vainqueur reste sur la zone, les autres sont spectateurs. L'arène tire ensuite immédiatement une **nouvelle** cellule (forcément différente), reconstruit son lobby, et redevient jouable. L'ancienne zone est régénérée en arrière-plan puis relâchée dans le pool.
 
 ### Commandes joueur
 
@@ -98,40 +100,64 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 
 ---
 
-## 🆕 Nouveautés de la version 1.5.0
+## 🆕 Nouveautés de la version 1.6.0
 
-La 1.5.0 est une mise à jour de **confort visuel et de fiabilité de fin de partie** : la bordure est désormais *toujours* visible, et tout le monde a un instant pour savourer la victoire avant de revenir au hub.
+La 1.6.0 est une mise à jour de **fiabilité de la bordure et d'expérience de fin de partie** : les morts deviennent de vrais spectateurs (invisibles et silencieux), la bordure est désormais fluide et fait vraiment des dégâts, et le lobby d'attente disparaît complètement au lancement pour ne laisser personne sur la cage.
 
-### 🧱 Mur de bordure en particules (correction d'un bug Paper)
+### 🛡️ Bordure avec dégâts vraiment fiables
 
-Paper applique par joueur une `WorldBorder` individuelle à chaque participant — c'est ce qui permet à plusieurs arènes de tourner simultanément sans que leurs bordures ne se chevauchent. Mais le rendu client du mur (le « rideau » bleu que Minecraft affiche nativement) **dépend d'un paquet réseau que Paper n'envoie pas toujours** dans cette configuration : bugs ouverts côté PaperMC ([#12372](https://github.com/PaperMC/Paper/issues/12372), [#7748](https://github.com/PaperMC/Paper/issues/7748)). Résultat : la `WorldBorder` limitait bien les déplacements et infligeait les dégâts attendus, mais le mur était souvent **invisible**, et les joueurs dépassaient sans le voir.
+La `WorldBorder` par-joueur de Paper a un comportement connu sur les bordures *virtuelles* (sans tick de monde attitré) : ses **dégâts vanille** ne sont pas toujours appliqués correctement, et son **animation de rétrécissement** ne se déroule pas forcément côté serveur. Résultat avant la 1.6.0 : un joueur pouvait se retrouver juste hors bordure sans subir le moindre dégât, ou pire, se faire éliminer sans avoir vu la zone jouable bouger.
 
-La 1.5.0 ne se fie plus qu'à son propre rendu :
+La 1.6.0 ne se fie plus du tout au système vanille pour les **dégâts** :
 
-- 🎨 **Rideau de particules `DUST` rouges** (RVB 255/50/50, taille 1.3) dessiné toutes les 10 ticks (2×/seconde) le long des 4 bords de la `WorldBorder` du joueur.
-- 👀 **Visible uniquement quand on s'approche** : le mur n'est dessiné que dans un rayon de 32 blocs autour du joueur sur l'axe X ou Z, ce qui évite de saturer les clients éloignés du bord.
-- 🪜 **Hauteur centrée sur le joueur** : le rideau monte de 4 blocs sous ses pieds et monte jusqu'à 6 blocs au-dessus, pour rester lisible dans les reliefs.
-- ♻️ **Annulé proprement** entre les parties (au reset de l'arène, et au redémarrage du plugin via la chaîne d'annulation existante).
+- 💥 **Tâche dédiée `tickBorderDamage`** (chaque seconde, du début du PVP jusqu'à la fin de la partie) qui compare la position réelle du joueur aux limites de sa bordure calculées par le plugin et applique `player.damage(2.0)` s'il est dehors.
+- 🎯 **Dommages uniformes** : que la bordure soit en train de bouger ou parfaitement stable, un joueur hors zone prend exactement **2 points de dégâts par seconde** (1 ❤️/s sans marge), comme annoncé dans le tableau de bord.
+- 🚫 **Plus de ticket à gratter** sur une bordure par-joueur capricieuse : la sécurité est désormais dans le code du plugin, pas dans une API tierce.
 
-Plus de joueurs qui se font éliminer « sans avoir vu la bordure » : le mur est désormais *toujours* là, peu importe la version exacte de Paper.
+### 📐 Réduction de bordure vraiment progressive
 
-### ⏱️ Délai de fin avant retour au hub (`end-delay-seconds`)
+Pour la même raison (bordure virtuelle par-joueur non rattachée au tick d'un vrai monde), `WorldBorder#getSize()` ne reflétait pas l'animation en cours côté serveur et sautait directement à la taille finale : dégâts et mur de particules suivaient donc une bordure qui *« téléportait »* au lieu de rétrécir.
 
-Avant, dès qu'il ne restait plus qu'un survivant, le plugin considérait la partie comme terminée et renvoyait tout le monde au hub quasi instantanément. La 1.5.0 introduit une **fenêtre de victoire configurable** :
+La 1.6.0 calcule elle-même la taille de bordure utilisée pour les dégâts, le rendu du mur et l'application visuelle :
 
-- ⏳ Nouveau paramètre **`game.end-delay-seconds`** (10 par défaut) dans `config.yml`.
-- 🏆 À la dernière mort, le vainqueur reste sur la zone le temps de ce délai ; les autres sont (ou restent) spectateurs de l'arène.
-- 🏛️ À la fin du délai, retour automatique de tout le monde au hub, déclenchement de la régénération de la zone, et tirage d'une nouvelle cellule comme avant.
+- 🎞️ **`getCurrentBorderDiameter()` interpole** entre la taille de départ et la cible sur toute la durée de chaque phase (`phase1`, `pause`, `phase2`), en se basant sur l'horloge système.
+- 🪜 **Synchronisation parfaite avec le tableau de bord** : ce qui est annoncé (« bordure à 250 dans 1:23 ») est exactement ce qui est utilisé pour les dégâts et le mur de particules — fini la bordure qui « pop » au dernier moment.
+- ♻️ **Enchaînement propre des phases** : la nouvelle phase repart bien de la taille *actuelle* interpolée (pas de la dernière cible brute), donc la transition reste fluide même si une phase a été interrompue avant la fin.
 
-C'est le moment idéal pour applaudir le vainqueur, prendre un screenshot, ou juste respirer après le rush final.
+### 🕶️ Joueurs morts = vrais spectateurs
 
-### 🗂️ Fichier de stats configurable (`stats-file`)
+Avant la 1.6.0, un joueur éliminé était bien passé en `GameMode.SPECTATOR`, mais restait techniquement *visible* des autres vivants et pouvait leur écrire dans le chat. La 1.6.0 va jusqu'au bout de la logique « mort = spectateur » :
 
-Le tableau des scores persistait déjà dans `plugins/HungerGames/stats.yml`. Le chemin est désormais exposé dans `config.yml` sous la clé **`stats-file`** (défaut `stats.yml`), pour les serveurs qui préfèrent mutualiser leurs données avec d'autres plugins ou ranger les stats ailleurs.
+- 👻 **`hidePlayer` côté vivants** : à chaque mort, le défunt est caché (`Player#hidePlayer`) à tous les joueurs encore en vie de la même arène. La visibilité est intégralement restaurée à la fin de la manche via `restoreVisibility()`.
+- 💬 **Chat isolé des morts** : un nouveau `DeadChatListener` intercepte `AsyncChatEvent` et ne relaie les messages d'un mort qu'aux autres morts/spectateurs de la même arène — les vivants (et le hub / les autres arènes) ne reçoivent rien. Plus de mort qui spoil une position dans le chat général.
+- 🧭 **Boussole « Suivre un joueur en vie »** (slot 1 de la hotbar des morts) : clic droit pour ouvrir un **GUI 27-slots listant les têtes des joueurs encore en vie** de l'arène, avec leur pseudo actuel et leur nombre de points de vie. Cliquer sur une tête téléporte instantanément le mort à ce joueur (avec vérification qu'il est toujours vivant au moment du clic, sinon le slot est retiré dynamiquement du GUI).
+- 🛡️ **Item protégé** : la boussole ne peut ni être lâchée ni déplacée dans l'inventaire (`DeathSpectateListener`).
+
+Un mort ne peut plus rien voir de ce qui se passe côté vivant, ne peut plus rien leur écrire, et n'a qu'à choisir qui suivre : c'est maintenant un vrai spectateur.
+
+### 🪟 Lobby d'attente entièrement retiré au lancement
+
+Au lancement d'une partie, **toute la machinerie du lobby flottant est nettoyée** — plus seulement la cage :
+
+- 🧹 **`removeLobbyCage()`** retire la cage de barrières (déjà fait avant la 1.6.0).
+- 🧹 **`removeLobbyPlatform()`** (nouveau) efface aussi la **plateforme de verre** et la **lanterne marine** qui la soutenait.
+- 👀 **Spectateurs libres de voler** : comme la plateforme disparaît, les spectateurs qui rejoignent une partie en cours ne sont plus coincés sur une petite dalle de verre — ils peuvent voler librement dans toute la zone jusqu'à la `WorldBorder`.
+
+### ✨ Niveau d'XP remis à zéro
+
+À chaque lancement de partie, le niveau et la barre d'expérience de chaque joueur sont réinitialisés à 0 (`Player#setLevel/setExp/setTotalExperience`) — pas de carry-over d'XP d'une partie à l'autre, pas de bonus involontaire (enchantements Fortune, etc.) au démarrage de la manche.
 
 ---
 
 ## 🆕 Récapitulatif des versions précédentes
+
+### 1.5.0 — Mur de bordure en particules, délai de fin configurable & stats paramétrables
+
+La 1.5.0 est une mise à jour de **confort visuel et de fiabilité de fin de partie** : la bordure est désormais *toujours* visible, et tout le monde a un instant pour savourer la victoire avant de revenir au hub.
+
+- 🧱 **Mur de bordure en particules** (`DUST` rouges) — corrige le bug Paper où le rendu client du mur n'était pas envoyé.
+- ⏱️ **Délai de fin avant retour au hub** (`game.end-delay-seconds`, 10 par défaut) — le vainqueur reste sur zone, les autres en spectateurs, puis tout le monde rentre au hub.
+- 🗂️ **Fichier de stats configurable** (`stats-file`) — chemin du fichier `stats.yml` désormais exposé dans `config.yml`.
 
 ### 1.4.0 — Tableau des scores persistant & PNJ trophée
 
@@ -213,7 +239,7 @@ Les réglages les plus importants sont commentés en français dans le fichier. 
 mvn clean package
 ```
 
-Le jar est généré dans `target/hungergames-1.5.0.jar`.
+Le jar est généré dans `target/hungergames-1.6.0.jar`.
 
 > **Note API Paper 1.21.1** : la régénération de chunks (`World#regenerateChunk`) est une API **spécifique à Paper** — elle lève une exception sur Spigot/CraftBukkit vanilla. C'est pour cela que le plugin dépend de `paper-api` et pas de `bukkit-api`.
 
@@ -225,7 +251,7 @@ Le jar est généré dans `target/hungergames-1.5.0.jar`.
 - La taille d'une zone (`zone.size`) est globale à tout le pool ; impossible d'avoir des arènes de tailles différentes sans changer la config pour tout le monde.
 - Le « mid » de la map n'est pas matérialisé par une structure — c'est simplement le centre géométrique de la zone (le lobby flottant est juste au-dessus).
 - Pas de système d'alliance in-game : comme demandé, ça reste au niveau des messages privés entre joueurs, en dehors du plugin.
-- Le mur de bordure en particules de la 1.5.0 ne remplace pas la `WorldBorder` : il la **complète visuellement**. Les dégâts, la collision et la zone jouable restent gérés par la `WorldBorder` elle-même, comme avant.
+- Le mur de bordure en particules (1.5.0) et les dégâts manuels de bordure (1.6.0) ne remplacent pas la `WorldBorder` : ils la **complètent**. Les déplacements, la collision et la zone jouable restent gérés par la `WorldBorder` elle-même.
 - La complétion `TAB` propose les noms de zones/kits déjà existants et les sous-commandes, mais ne valide pas qu'un nouveau nom n'est pas déjà pris.
 
 ---

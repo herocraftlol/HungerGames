@@ -5,11 +5,14 @@ import com.herocraft.hungergames.command.HGAdminCommand;
 import com.herocraft.hungergames.command.HGCommand;
 import com.herocraft.hungergames.gui.ArenaGUI;
 import com.herocraft.hungergames.gui.ArenaGUIListener;
+import com.herocraft.hungergames.gui.DeathSpectateGUI;
 import com.herocraft.hungergames.gui.LeaderboardGUI;
 import com.herocraft.hungergames.hub.HubNpcListener;
 import com.herocraft.hungergames.kit.KitManager;
 import com.herocraft.hungergames.kit.KitSelectorGUI;
 import com.herocraft.hungergames.listener.CombatListener;
+import com.herocraft.hungergames.listener.DeadChatListener;
+import com.herocraft.hungergames.listener.DeathSpectateListener;
 import com.herocraft.hungergames.listener.PlayerListener;
 import com.herocraft.hungergames.listener.SpectatorListener;
 import com.herocraft.hungergames.listener.WaitingRoomListener;
@@ -25,6 +28,7 @@ public class HungerGamesPlugin extends JavaPlugin {
     private ArenaGUI arenaGUI;
     private StatsManager statsManager;
     private LeaderboardGUI leaderboardGUI;
+    private DeathSpectateGUI deathSpectateGUI;
 
     @Override
     public void onEnable() {
@@ -40,6 +44,7 @@ public class HungerGamesPlugin extends JavaPlugin {
         this.arenaGUI = new ArenaGUI(this);
         this.statsManager = new StatsManager(this, getConfig().getString("storage.stats-file", "stats.yml"));
         this.leaderboardGUI = new LeaderboardGUI(this);
+        this.deathSpectateGUI = new DeathSpectateGUI(this);
 
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
         getServer().getPluginManager().registerEvents(new CombatListener(this), this);
@@ -47,6 +52,8 @@ public class HungerGamesPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new WaitingRoomListener(this), this);
         getServer().getPluginManager().registerEvents(new ArenaGUIListener(this, arenaGUI), this);
         getServer().getPluginManager().registerEvents(new HubNpcListener(this), this);
+        getServer().getPluginManager().registerEvents(new DeathSpectateListener(this), this);
+        getServer().getPluginManager().registerEvents(new DeadChatListener(this), this);
 
         // Rafraîchit le GUI des arènes toutes les secondes pour les joueurs qui l'ont ouvert.
         Bukkit.getScheduler().runTaskTimer(this, arenaGUI::refreshOpenViewers, 20L, 20L);
@@ -89,5 +96,9 @@ public class HungerGamesPlugin extends JavaPlugin {
 
     public LeaderboardGUI getLeaderboardGUI() {
         return leaderboardGUI;
+    }
+
+    public DeathSpectateGUI getDeathSpectateGUI() {
+        return deathSpectateGUI;
     }
 }

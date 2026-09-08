@@ -2,6 +2,7 @@ package com.herocraft.hungergames.arena;
 
 import com.herocraft.hungergames.HungerGamesPlugin;
 import com.herocraft.hungergames.kit.Kit;
+import com.herocraft.hungergames.util.DeathItems;
 import com.herocraft.hungergames.util.RandomLocationUtil;
 import com.herocraft.hungergames.util.ScoreboardUtil;
 import com.herocraft.hungergames.util.SpectatorItems;
@@ -55,6 +56,10 @@ public class Arena {
     private boolean destroyed = false;
     private BorderPhase borderPhase = BorderPhase.NONE;
     private long borderPhaseEndMillis = 0L;
+    private double borderSizeAtPhaseStart = 0;
+    private double borderSizeTarget = 0;
+    private long borderAnimStartMillis = 0L;
+    private long borderAnimDurationMillis = 0L;
 
     public Arena(HungerGamesPlugin plugin, String name, World world, ZoneAllocator.Zone zone) {
         this.plugin = plugin;
@@ -431,6 +436,7 @@ public class Arena {
             plugin.getArenaManager().sendToHub(p);
         }
         if (preloadBar != null) preloadBar.removeAll();
+        restoreVisibility();
         removeAllSpectators();
         plugin.getArenaManager().onArenaEnded(this);
         regenerateAndRelease(zone);
@@ -476,6 +482,16 @@ public class Arena {
         }
 
         state = ArenaState.GRACE_PERIOD;
+
+        // Suivi manuel de la taille de bordure "actuelle" (voir getCurrentBorderDiameter) :
+        // on ne se fie pas à WorldBorder#getSize() pour une bordure virtuelle par-joueur,
+        // qui ne s'anime pas forcément côté serveur. Au lancement, la bordure est fixe
+        // (pas d'animation en cours) à la taille complète de la zone.
+        borderSizeAtPhaseStart = zone.size();
+        borderSizeTarget = zone.size();
+        borderAnimStartMillis = System.currentTimeMillis();
+        borderAnimDurationMillis = 0L;
+
         int graceSeconds = plugin.getConfig().getInt("game.grace-period-seconds", 300);
         graceTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, this::endGracePeriod, graceSeconds * 20L);
 
@@ -511,18 +527,18 @@ public class Arena {
 
     /** Inflige ~1 cœur (2 PV) à chaque joueur actuellement hors de sa bordure. */
     private void tickBorderDamage() {
+        double half = getCurrentBorderDiameter() / 2.0;
+        double centerX = zone.centerX() + 0.5;
+        double centerZ = zone.centerZ() + 0.5;
+
         for (UUID uuid : players) {
             if (!alive.contains(uuid)) continue;
             Player p = org.bukkit.Bukkit.getPlayer(uuid);
             if (p == null) continue;
-            WorldBorder border = p.getWorldBorder();
-            if (border == null) continue;
 
-            Location center = border.getCenter();
-            double half = border.getSize() / 2.0;
             Location loc = p.getLocation();
-            double dx = Math.abs(loc.getX() - center.getX());
-            double dz = Math.abs(loc.getZ() - center.getZ());
+            double dx = Math.abs(loc.getX() - centerX);
+            double dz = Math.abs(loc.getZ() - centerZ);
             if (dx > half || dz > half) {
                 p.damage(2.0);
             }
@@ -539,21 +555,36 @@ public class Arena {
     }
 
     private void renderBorderWall(Player p) {
-        WorldBorder border = p.getWorldBorder();
-        if (border == null) return;
-
-        Location center = border.getCenter();
-        double half = border.getSize() / 2.0;
+        double half = getCurrentBorderDiameter() / 2.0;
+        double centerX = zone.centerX() + 0.5;
+        double centerZ = zone.centerZ() + 0.5;
         Location loc = p.getLocation();
 
-        double minX = center.getX() - half, maxX = center.getX() + half;
-        double minZ = center.getZ() - half, maxZ = center.getZ() + half;
+        double minX = centerX - half, maxX = centerX + half;
+        double minZ = centerZ - half, maxZ = centerZ + half;
         double visibility = 32;
 
         if (Math.abs(loc.getX() - minX) <= visibility) drawWallAtX(p, minX, loc.getZ(), visibility);
         if (Math.abs(loc.getX() - maxX) <= visibility) drawWallAtX(p, maxX, loc.getZ(), visibility);
         if (Math.abs(loc.getZ() - minZ) <= visibility) drawWallAtZ(p, loc.getX(), minZ, visibility);
         if (Math.abs(loc.getZ() - maxZ) <= visibility) drawWallAtZ(p, loc.getX(), maxZ, visibility);
+    }
+
+    /**
+     * Taille (diamètre) actuelle "réelle" de la bordure, en interpolant nous-mêmes
+     * entre le début et la fin de la dernière animation demandée
+     * ({@link #applyBorderSize}). Nécessaire car {@code WorldBorder#getSize()} sur
+     * une bordure virtuelle par-joueur ne reflète pas forcément l'animation en
+     * cours côté serveur (pas de tick de monde pour la faire progresser) : sans ce
+     * suivi manuel, le mur de particules et les dégâts sautaient directement à la
+     * taille finale au lieu de réduire progressivement.
+     */
+    private double getCurrentBorderDiameter() {
+        if (borderAnimDurationMillis <= 0) return borderSizeTarget;
+        long elapsed = System.currentTimeMillis() - borderAnimStartMillis;
+        if (elapsed >= borderAnimDurationMillis) return borderSizeTarget;
+        double t = elapsed / (double) borderAnimDurationMillis;
+        return borderSizeAtPhaseStart + (borderSizeTarget - borderSizeAtPhaseStart) * t;
     }
 
     private static final org.bukkit.Particle.DustOptions BORDER_DUST =
@@ -637,6 +668,15 @@ public class Arena {
     }
 
     private void applyBorderSize(int targetDiameter, long durationSeconds) {
+        // Source de vérité pour nos propres dégâts/rendu (voir getCurrentBorderDiameter) :
+        // on repart de la taille "actuelle" interpolée, pas de la dernière cible brute,
+        // pour enchaîner proprement une nouvelle animation même si la précédente n'est
+        // pas totalement terminée.
+        borderSizeAtPhaseStart = getCurrentBorderDiameter();
+        borderSizeTarget = targetDiameter;
+        borderAnimStartMillis = System.currentTimeMillis();
+        borderAnimDurationMillis = durationSeconds * 1000L;
+
         for (UUID uuid : players) {
             Player p = org.bukkit.Bukkit.getPlayer(uuid);
             if (p == null) continue;
@@ -661,8 +701,67 @@ public class Arena {
 
     public void onPlayerDeath(Player victim, Player killer) {
         alive.remove(victim.getUniqueId());
+        hideFromLiving(victim);
+        victim.getInventory().setItem(0, DeathItems.createTeleportItem(plugin));
         announceDeath(victim, killer);
         checkWinCondition();
+    }
+
+    /**
+     * Rend le joueur qui vient de mourir invisible aux joueurs encore en vie de
+     * cette arène (comme un vrai spectateur), tout en lui redonnant la vue sur
+     * les autres morts/spectateurs qu'il avait pu avoir cachés tant qu'il était
+     * lui-même en vie (voir la même boucle plus haut, exécutée pour chaque mort
+     * précédente).
+     */
+    private void hideFromLiving(Player deadPlayer) {
+        for (UUID uuid : alive) {
+            Player p = org.bukkit.Bukkit.getPlayer(uuid);
+            if (p != null) p.hidePlayer(plugin, deadPlayer);
+        }
+        for (UUID uuid : players) {
+            if (alive.contains(uuid) || uuid.equals(deadPlayer.getUniqueId())) continue;
+            Player other = org.bukkit.Bukkit.getPlayer(uuid);
+            if (other != null) {
+                deadPlayer.showPlayer(plugin, other);
+                other.showPlayer(plugin, deadPlayer);
+            }
+        }
+        for (UUID uuid : spectators) {
+            Player other = org.bukkit.Bukkit.getPlayer(uuid);
+            if (other != null) {
+                deadPlayer.showPlayer(plugin, other);
+                other.showPlayer(plugin, deadPlayer);
+            }
+        }
+    }
+
+    /** Annule toutes les visibilités cachées entre participants de cette arène (fin de manche). */
+    private void restoreVisibility() {
+        List<Player> everyone = new java.util.ArrayList<>();
+        for (UUID uuid : players) {
+            Player p = org.bukkit.Bukkit.getPlayer(uuid);
+            if (p != null) everyone.add(p);
+        }
+        for (UUID uuid : spectators) {
+            Player p = org.bukkit.Bukkit.getPlayer(uuid);
+            if (p != null) everyone.add(p);
+        }
+        for (Player a : everyone) {
+            for (Player b : everyone) {
+                if (a != b) a.showPlayer(plugin, b);
+            }
+        }
+    }
+
+    /** Liste des joueurs de cette arène actuellement en vie et connectés (pour le GUI de téléportation des morts). */
+    public List<Player> getAlivePlayersOnline() {
+        List<Player> result = new java.util.ArrayList<>();
+        for (UUID uuid : alive) {
+            Player p = org.bukkit.Bukkit.getPlayer(uuid);
+            if (p != null) result.add(p);
+        }
+        return result;
     }
 
     private void announceDeath(Player victim, Player killer) {
@@ -726,6 +825,7 @@ public class Arena {
         }
 
         org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            restoreVisibility();
             for (UUID uuid : players) {
                 Player p = org.bukkit.Bukkit.getPlayer(uuid);
                 if (p != null) plugin.getArenaManager().sendToHub(p);
@@ -757,6 +857,9 @@ public class Arena {
         forcedStart = false;
         countdownSecondsLeft = 0;
         borderPhase = BorderPhase.NONE;
+        borderSizeAtPhaseStart = 0;
+        borderSizeTarget = 0;
+        borderAnimDurationMillis = 0L;
 
         ZoneAllocator.Zone newZone = plugin.getArenaManager().getZoneAllocator().allocateRandomFreeCell();
         setupZone(newZone);
@@ -823,11 +926,13 @@ public class Arena {
             }
         }
 
-        // Masque les pseudos au-dessus des têtes pendant la partie active seulement.
+        // Masque les pseudos au-dessus des têtes des joueurs encore EN VIE pendant
+        // la partie active (les morts sont de toute façon invisibles aux vivants,
+        // et on laisse les pseudos normaux entre spectateurs/morts qui se voient).
         java.util.List<String> hiddenNameTags = java.util.List.of();
         if (state == ArenaState.GRACE_PERIOD || state == ArenaState.PVP) {
             hiddenNameTags = new java.util.ArrayList<>();
-            for (UUID uuid : players) {
+            for (UUID uuid : alive) {
                 Player p = org.bukkit.Bukkit.getPlayer(uuid);
                 if (p != null) hiddenNameTags.add(p.getName());
             }
