@@ -1,263 +1,405 @@
-<div align="center">
-
-# 🏆 HungerGames
-
-### Plugin battle royale *à l'ancienne* pour serveurs **Paper 1.21**
-
-*Spawns dispersés sur une vraie map générée · arènes persistantes qui tournent en boucle · bordures de zone individuelles par joueur avec dégâts vraiment fiables et réduction vraiment progressive · bordure en deux phases avec kill-feed · mur de bordure en particules · morts invisibles en silence avec boussole de suivi · mode spectateur complet · GUI d'arènes dynamique · tableau des scores persistant · lobby central procédural · kits configurables.*
-
-</div>
-
----
-
-## 🎮 Qu'est-ce que c'est ?
-
-**HungerGames** est un plugin Minecraft qui transforme votre serveur Paper 1.21 en arène de battle royale "à l'ancienne", dans l'esprit des Hunger Games d'origine : pas de plateau ni de coffres scénarisés, **une vraie carte générée par Minecraft**, des joueurs dispersés au compte à rebours, puis un seul survivant.
-
-Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans un grand pool de cellules, ce qui garantit que **deux parties ne se jouent jamais au même endroit**. À la fin d'une partie, la zone est régénérée puis remise dans le pool ; l'arène continue ensuite immédiatement sur une nouvelle cellule, sans intervention de l'admin.
-
----
-
-## ✨ Fonctionnalités principales
-
-| Catégorie | Ce que vous obtenez |
-|---|---|
-| 🌍 **Zones jamais réutilisées** | Pool de ~10 000 cellules autour du hub ; tirage aléatoire à chaque partie, régénération automatique des zones jouées. |
-| 🏗️ **Arènes persistantes** | Créez une arène nommée, elle tourne en boucle sous ce nom tant que vous ne la supprimez pas. Persistance des cellules dans `arenas.yml` à travers les redémarrages. |
-| 🧊 **Lobby flottant sécurisé, puis entièrement retiré** | Plateforme de verre au centre de chaque zone, entourée d'une cage de barrières invisibles pendant l'attente ; **cage + verre + lanterne marine supprimés dès le lancement** pour libérer l'espace aux spectateurs. |
-| 🚧 **Bordures par joueur, vraiment fiables** | Chaque arène applique une `WorldBorder` *individuelle* à ses participants — plusieurs arènes peuvent tourner simultanément sans interférer. Les dégâts hors-bordure et l'animation de rétrécissement sont gérés manuellement pour rester fluides même quand la `WorldBorder` virtuelle ne s'anime pas côté serveur. |
-| 🧱 **Mur de bordure en particules** | Un rideau de particules rouges entoure la zone jouable à hauteur des yeux — visible par tous, même quand le rendu natif de Paper n'envoie pas le paquet au client. |
-| 📉 **Bordure en deux phases, vraiment progressive** | Une première réduction, une pause stabilisée, puis une réduction finale jusqu'au centre, **avec la phase et le temps restant affichés en direct dans le tableau de bord**. La taille affichée/utilisée est interpolée manuellement pour rester synchronisée avec le temps annoncé. |
-| 💬 **Kill-feed en jeu** | À chaque mort, un message est envoyé à tous les participants et spectateurs de l'arène : « X a éliminé Y ! » ou « Y est mort. ». |
-| 👁️ **Mode spectateur complet** | Suivez n'importe quelle partie en `SPECTATOR`, téléporté sur le lobby de la zone avec la bordure appliquée. |
-| 🕶️ **Morts vraiment invisibles et silencieux** | Les joueurs éliminés deviennent **invisibles aux vivants** (`hidePlayer`), leur **chat est isolé** entre morts/spectateurs de la même arène, et une **boussole de suivi** leur ouvre un GUI des têtes des joueurs encore en vie pour se téléporter à l'un d'eux. |
-| 🗂️ **GUI d'arènes dynamique** | Inventaire 54-slots, paginé, qui liste toutes les zones avec couleur selon l'état (vert = rejoignable, jaune = chargement, rouge = en cours). Mise à jour en temps réel. |
-| 🏛️ **Lobby central procédural** | `/hgadmin hub build` construit un plaza, des collines, des montagnes, un campement, une entrée de mine, des **PNJ villageois** qui ouvrent le GUI d'arènes, et un **PNJ dédié au tableau des scores**. |
-| 🏆 **Tableau des scores persistant** | Chaque victoire est enregistrée dans `stats.yml` ; ouvrez le classement à tout moment avec `/hg top` (alias `/hg scores`) ou clic droit sur le PNJ trophée du hub — classement en têtes de joueurs, médailles 🥇🥈🥉, persistant à travers les redémarrages. |
-| 🎒 **Kits configurables** | 4 kits par défaut (Guerrier, Bucheron, Mineur, Archer), entièrement éditables via `/hgadmin kit ...`. |
-| 📦 **Confort** | Délai de fin configurable avant le retour automatique au hub, **XP remise à zéro** au lancement, inventaire vidé à chaque retour au hub, faim toujours pleine hors partie, pseudos masqués pendant la partie, scatter intelligent (pas de spawn en pleine mer), suggestions cliquables. |
-| ⌨️ **Complétion `TAB`** | `/hg` et `/hgadmin` proposent contextuellement les sous-commandes, noms de zones et identifiants de kits. |
-
----
-
-## 🚀 Installation
-
-1. Téléchargez `hungergames-1.6.0.jar` depuis la [release v1.6.0](../../releases/latest).
-2. Copiez-le dans le dossier `plugins/` de votre serveur **Paper 1.21.x**.
-3. (Re)démarrez le serveur : `config.yml` et `kits.yml` sont générés automatiquement.
-4. Éditez `world` dans `config.yml` pour cibler le monde vanilla généré que vous voulez utiliser.
-5. Construisez votre lobby avec `/hgadmin hub build`, puis créez votre première arène : `/hgadmin zone create maZone1`.
-
-⚠️ Le plugin dépend de `paper-api` ; il ne fonctionnera **pas** sur Spigot/CraftBukkit vanilla (la régénération de chunks et la `WorldBorder` par joueur sont spécifiques à Paper).
-
----
-
-## 📖 Guide rapide
-
-### Cycle de vie d'une arène
-
-1. **Création** — `/hgadmin zone create <nom>` : tirage d'une cellule libre, construction du lobby flottant, préchargement asynchrone des chunks.
-2. **Attente** — L'arène reste ouverte ; les joueurs la rejoignent via `/hg join <nom>` ou le GUI.
-3. **Lancement** — Dès que `min-players` est atteint et que la zone est prête, un compte à rebours démarre (ou `/hgadmin zone forcestart <nom>`). À T0 : la cage de barrières, la plateforme de verre et la lanterne marine du lobby sont **toutes retirées**, le niveau d'XP de chaque joueur est remis à zéro, et les pseudos au-dessus des têtes sont masqués.
-4. **Partie** — Scatter aléatoire → période de grâce sans PVP → PVP → bordure en deux phases (réduction → pause → réduction finale), avec un **mur de particules rouges** visible à chaque bord et des **dégâts manuels** appliqués si un joueur se retrouve hors bordure.
-5. **Mort en partie** — Le joueur devient spectateur de sa propre arène, devient invisible aux vivants (`hidePlayer`), ne peut plus chatter qu'avec les autres morts/spectateurs, et reçoit une boussole « Suivre un joueur en vie » qui ouvre un GUI listant les têtes des survivants.
-6. **Fin & cycle** — À la dernière mort, tout le monde reste `end-delay-seconds` secondes (10 par défaut) avant le retour automatique au hub ; le vainqueur reste sur la zone, les autres sont spectateurs. L'arène tire ensuite immédiatement une **nouvelle** cellule (forcément différente), reconstruit son lobby, et redevient jouable. L'ancienne zone est régénérée en arrière-plan puis relâchée dans le pool.
-
-### Commandes joueur
-
-```
-/hg join [nom]    Rejoindre une arène par son nom (ou une au hasard)
-/hg leave         Quitter la partie (ou le mode spectateur)
-/hg kit           Choisir un kit
-/hg arenas        Ouvrir le GUI listant toutes les arènes (alias : /hg gui)
-/hg top           Ouvrir le tableau des scores des victoires (alias : /hg scores)
-/hg unspectate    Quitter le mode spectateur
-```
-
-### Commandes admin (`hungergames.admin`, op par défaut)
-
-```
-/hgadmin zone create <nom>       Créer une nouvelle arène persistante
-/hgadmin zone delete <nom>       Supprimer définitivement une arène
-/hgadmin zone rename <a> <b>     Renommer une arène
-/hgadmin zone list               Lister toutes les arènes et leur état
-/hgadmin zone info <nom>         Détails (cellule, joueurs, spectateurs...)
-/hgadmin zone tp <nom>           Téléportation au lobby de l'arène
-/hgadmin zone forcestart <nom>   Forcer le démarrage d'une partie
-
-/hgadmin hub build               Construire (ou reconstruire) le lobby central
-/hgadmin hub delete              Supprimer le lobby construit
-
-/hgadmin kit create <id> <nom>   Créer un kit
-/hgadmin kit delete <id>         Supprimer un kit
-/hgadmin kit additem <id>        Ajouter l'item en main au kit
-/hgadmin kit seticon <id>        Définir l'item en main comme icône
-/hgadmin kit list                Lister les kits
-
-/hgadmin reload                  Recharger config.yml et kits.yml
-/hgadmin list                    Nombre d'arènes actives / cellules du pool occupées
-```
-
----
-
-## 🆕 Nouveautés de la version 1.6.0
-
-La 1.6.0 est une mise à jour de **fiabilité de la bordure et d'expérience de fin de partie** : les morts deviennent de vrais spectateurs (invisibles et silencieux), la bordure est désormais fluide et fait vraiment des dégâts, et le lobby d'attente disparaît complètement au lancement pour ne laisser personne sur la cage.
-
-### 🛡️ Bordure avec dégâts vraiment fiables
-
-La `WorldBorder` par-joueur de Paper a un comportement connu sur les bordures *virtuelles* (sans tick de monde attitré) : ses **dégâts vanille** ne sont pas toujours appliqués correctement, et son **animation de rétrécissement** ne se déroule pas forcément côté serveur. Résultat avant la 1.6.0 : un joueur pouvait se retrouver juste hors bordure sans subir le moindre dégât, ou pire, se faire éliminer sans avoir vu la zone jouable bouger.
-
-La 1.6.0 ne se fie plus du tout au système vanille pour les **dégâts** :
-
-- 💥 **Tâche dédiée `tickBorderDamage`** (chaque seconde, du début du PVP jusqu'à la fin de la partie) qui compare la position réelle du joueur aux limites de sa bordure calculées par le plugin et applique `player.damage(2.0)` s'il est dehors.
-- 🎯 **Dommages uniformes** : que la bordure soit en train de bouger ou parfaitement stable, un joueur hors zone prend exactement **2 points de dégâts par seconde** (1 ❤️/s sans marge), comme annoncé dans le tableau de bord.
-- 🚫 **Plus de ticket à gratter** sur une bordure par-joueur capricieuse : la sécurité est désormais dans le code du plugin, pas dans une API tierce.
-
-### 📐 Réduction de bordure vraiment progressive
-
-Pour la même raison (bordure virtuelle par-joueur non rattachée au tick d'un vrai monde), `WorldBorder#getSize()` ne reflétait pas l'animation en cours côté serveur et sautait directement à la taille finale : dégâts et mur de particules suivaient donc une bordure qui *« téléportait »* au lieu de rétrécir.
-
-La 1.6.0 calcule elle-même la taille de bordure utilisée pour les dégâts, le rendu du mur et l'application visuelle :
-
-- 🎞️ **`getCurrentBorderDiameter()` interpole** entre la taille de départ et la cible sur toute la durée de chaque phase (`phase1`, `pause`, `phase2`), en se basant sur l'horloge système.
-- 🪜 **Synchronisation parfaite avec le tableau de bord** : ce qui est annoncé (« bordure à 250 dans 1:23 ») est exactement ce qui est utilisé pour les dégâts et le mur de particules — fini la bordure qui « pop » au dernier moment.
-- ♻️ **Enchaînement propre des phases** : la nouvelle phase repart bien de la taille *actuelle* interpolée (pas de la dernière cible brute), donc la transition reste fluide même si une phase a été interrompue avant la fin.
-
-### 🕶️ Joueurs morts = vrais spectateurs
-
-Avant la 1.6.0, un joueur éliminé était bien passé en `GameMode.SPECTATOR`, mais restait techniquement *visible* des autres vivants et pouvait leur écrire dans le chat. La 1.6.0 va jusqu'au bout de la logique « mort = spectateur » :
-
-- 👻 **`hidePlayer` côté vivants** : à chaque mort, le défunt est caché (`Player#hidePlayer`) à tous les joueurs encore en vie de la même arène. La visibilité est intégralement restaurée à la fin de la manche via `restoreVisibility()`.
-- 💬 **Chat isolé des morts** : un nouveau `DeadChatListener` intercepte `AsyncChatEvent` et ne relaie les messages d'un mort qu'aux autres morts/spectateurs de la même arène — les vivants (et le hub / les autres arènes) ne reçoivent rien. Plus de mort qui spoil une position dans le chat général.
-- 🧭 **Boussole « Suivre un joueur en vie »** (slot 1 de la hotbar des morts) : clic droit pour ouvrir un **GUI 27-slots listant les têtes des joueurs encore en vie** de l'arène, avec leur pseudo actuel et leur nombre de points de vie. Cliquer sur une tête téléporte instantanément le mort à ce joueur (avec vérification qu'il est toujours vivant au moment du clic, sinon le slot est retiré dynamiquement du GUI).
-- 🛡️ **Item protégé** : la boussole ne peut ni être lâchée ni déplacée dans l'inventaire (`DeathSpectateListener`).
-
-Un mort ne peut plus rien voir de ce qui se passe côté vivant, ne peut plus rien leur écrire, et n'a qu'à choisir qui suivre : c'est maintenant un vrai spectateur.
-
-### 🪟 Lobby d'attente entièrement retiré au lancement
-
-Au lancement d'une partie, **toute la machinerie du lobby flottant est nettoyée** — plus seulement la cage :
-
-- 🧹 **`removeLobbyCage()`** retire la cage de barrières (déjà fait avant la 1.6.0).
-- 🧹 **`removeLobbyPlatform()`** (nouveau) efface aussi la **plateforme de verre** et la **lanterne marine** qui la soutenait.
-- 👀 **Spectateurs libres de voler** : comme la plateforme disparaît, les spectateurs qui rejoignent une partie en cours ne sont plus coincés sur une petite dalle de verre — ils peuvent voler librement dans toute la zone jusqu'à la `WorldBorder`.
-
-### ✨ Niveau d'XP remis à zéro
-
-À chaque lancement de partie, le niveau et la barre d'expérience de chaque joueur sont réinitialisés à 0 (`Player#setLevel/setExp/setTotalExperience`) — pas de carry-over d'XP d'une partie à l'autre, pas de bonus involontaire (enchantements Fortune, etc.) au démarrage de la manche.
-
----
-
-## 🆕 Récapitulatif des versions précédentes
-
-### 1.5.0 — Mur de bordure en particules, délai de fin configurable & stats paramétrables
-
-La 1.5.0 est une mise à jour de **confort visuel et de fiabilité de fin de partie** : la bordure est désormais *toujours* visible, et tout le monde a un instant pour savourer la victoire avant de revenir au hub.
-
-- 🧱 **Mur de bordure en particules** (`DUST` rouges) — corrige le bug Paper où le rendu client du mur n'était pas envoyé.
-- ⏱️ **Délai de fin avant retour au hub** (`game.end-delay-seconds`, 10 par défaut) — le vainqueur reste sur zone, les autres en spectateurs, puis tout le monde rentre au hub.
-- 🗂️ **Fichier de stats configurable** (`stats-file`) — chemin du fichier `stats.yml` désormais exposé dans `config.yml`.
-
-### 1.4.0 — Tableau des scores persistant & PNJ trophée
-
-La 1.4.0 transforme chaque victoire en **progression sauvegardée** et donne enfin au hub un but à explorer :
-
-- 🏆 **Tableau des scores persistant** : `/hg top` (alias `/hg scores`) ouvre un inventaire 27-slots en forme de **trophée** listant les meilleurs joueurs du serveur, du plus grand nombre de victoires au plus petit.
-- 🥇 **Têtes de joueurs avec médailles** : chaque entrée est la vraie tête Minecraft du joueur, avec son pseudo actuel et son nombre de victoires. Les trois premiers reçoivent une médaille (or / argent / bronze).
-- 💾 **Persistance dans `stats.yml`** : les victoires sont enregistrées dans `plugins/HungerGames/stats.yml` et survivent aux redémarrages du serveur — les pseudos sont mis à jour à chaque victoire pour suivre un joueur même s'il a changé de nom.
-- 🧑‍🌾 **PNJ trophée au hub** : `/hgadmin hub build` place désormais, en plus des PNJ d'arène, un villageois sur un piédestal en or (du côté opposé aux PNJ d'arène) qui ouvre le classement au clic droit.
-- 🔁 **Refactor `Kit`** : les kits sont maintenant gérés via une vraie classe `Kit` dédiée — code plus simple et plus extensible.
-
-### 1.3.0 — Bordure en deux phases avec suivi au tableau de bord & kill-feed
-
-La 1.3.0 peaufine l'expérience de jeu en pleine partie et la lecture de la fin de match :
-
-- 📉 **Bordure en deux phases** : après la période de grâce, la bordure se contracte en trois temps — réduction vers un premier cercle → pause stabilisée → réduction finale jusqu'à un petit cercle central. Chaque étape (durée restante + phase) est affichée en direct dans le tableau de bord à droite pendant tout le PVP.
-- 💬 **Kill-feed dans le chat** : à chaque mort, tous les participants et spectateurs reçoivent « X a éliminé Y ! » pour les morts causées par un autre joueur (analyse du dernier dégât reçu) ou « Y est mort. » pour les morts environnementales.
-
-### 1.2.0 — Lobby central procédural, cycle auto des arènes, spectateur & confort
-
-La 1.2.0 a transformé le plugin d'un simple « système de zones » en une expérience complète clé-en-main :
-
-- 🏛️ **Lobby central procédural** (`/hgadmin hub build`) : plaza circulaire en quartz, collines herbeuses qui montent en montagnes enneigées, arbres, fleurs, campement, entrée de mine creusée avec minerais apparents, et un mur de barrières invisibles doublé de la `WorldBorder` du hub.
-- 🧑‍🌾 **PNJ « Rejoindre une arène »** : 1 à 7 villageois (configurable) sur pupitres en bloc d'émeraude face au spawn, qui ouvrent le GUI d'arènes au clic droit.
-- ♻️ **Cycle automatique des arènes** : à chaque fin de partie, la zone jouée est régénérée en arrière-plan puis relâchée dans le pool, et l'arène tire immédiatement une nouvelle cellule.
-- 💾 **Persistance des arènes** : `plugins/HungerGames/arenas.yml` sauvegarde la cellule de chaque arène — toutes les arènes sont recréées automatiquement à leur cellule au redémarrage du plugin.
-- 🎒 **Items de salle d'attente** : une épée en pierre (slot 1, ouvre `/hg kit`) et un bloc barrière (slot 5, exécute `/hg leave`), protégés contre le drop et le déplacement.
-- 👁️ **Mode spectateur amélioré** : boussole protégée, spectateur automatique à la mort, bordure de la zone appliquée, bouton central « Rejoindre une partie aléatoire » dans le GUI.
-- 🪧 **Cage de lobby dynamique** : la plateforme flottante est entourée d'une cage de barrières pendant l'attente, retirée au lancement de la partie.
-- 🎯 **Scatter intelligent** : les points de spawn en pleine eau/glace/lave sont rejetés — fini les apparitions en plein océan.
-- 👤 **Pseudos masqués pendant la partie** via une équipe de scoreboard dédiée, puis restaurés à la fin.
-- 📊 **GUI d'arènes en temps réel** : le nombre de joueurs et l'état des zones se mettent à jour en direct toutes les secondes.
-- 🛡️ **Conforts divers** : inventaire vidé au hub, faim toujours pleine hors partie, suggestion de kit cliquable, `WorldBorder` avec `damageBuffer = 0` (1 ❤️/s sans marge).
-
-### 1.1.0 — GUI d'arènes dynamique & mode spectateur
-
-- 👁️ **Mode spectateur** complet avec bordure de zone personnelle.
-- 🗂️ **GUI d'arènes dynamique** paginée (alias `/hg gui`), clic pour rejoindre ou regarder.
-- 🧭 **Boussole de sortie** pour quitter le spectateur instantanément.
-- 🔄 **Éliminés → spectateurs** automatique dans leur propre arène.
-- 🎮 Vraie map générée, kits configurables, bordure rétrécissante.
-
-### 1.0.0 — Première publication
-
-- 🎯 Zones jamais réutilisées (recherche en spirale, persistance dans `zones.yml`).
-- 🎮 Vraie map générée, lobby flottant, préchargement asynchrone.
-- 🗺️ `WorldBorder` personnelle par participant.
-- 🛡️ Période de grâce sans PVP, bordure rétrécissante, kits configurables.
-
----
-
-## ⚙️ Configuration (`config.yml`)
-
-Les réglages les plus importants sont commentés en français dans le fichier. Quelques points clés :
-
-- **`world`** : le monde vanilla (généré, pas plat) où les zones sont allouées.
-- **`hub.x / hub.y / hub.z`** : centre du hub borné (par défaut `0.5, 100, 0.5`).
-- **`hub.radius`** : rayon du hub en blocs (défaut 100, soit de -100 à 100 en X/Z).
-- **`hub.build.radius`** : rayon de la zone décorée par `/hgadmin hub build` (40 par défaut).
-- **`hub.build.npc-count`** : nombre de PNJ « rejoindre une arène » (1 à 7, 1 par défaut).
-- **`zone.size`** : diamètre d'une zone (1000 par défaut = rayon 500).
-- **`zone.pool-radius-cells`** : rayon du pool en nombre de cellules (50 par défaut, ~10 000 cellules possibles).
-- **`zone.chunks-per-tick`** : vitesse de préchargement (8 par défaut).
-- **`zone.regen-chunks-per-tick`** : vitesse de régénération en fin de partie (2 par défaut, plus conservateur).
-- **`lobby.cage-margin`** / **`lobby.cage-height`** : géométrie de la cage du lobby flottant.
-- **`game.min-players`** / **`game.max-players`** : seuils de joueurs par arène.
-- **`game.grace-period-seconds`** : durée sans PVP après le scatter (300 par défaut).
-- **`game.end-delay-seconds`** : délai entre la dernière mort et le retour automatique au hub (10 par défaut).
-- **`game.border.shrink.phase1.*`** : première réduction de la bordure après la période de grâce (diamètre et durée).
-- **`game.border.shrink.pause-seconds`** : durée de la pause stabilisée entre les deux phases.
-- **`game.border.shrink.phase2.*`** : réduction finale jusqu'au centre de la zone (diamètre et durée).
-- **`stats-file`** : chemin du fichier de statistiques (tableau des scores) dans `plugins/HungerGames/` (défaut `stats.yml`).
-
----
-
-## 🔨 Compilation
+# HungerGames (Paper 1.21)
+
+Plugin de battle royale "à l'ancienne" : les joueurs apparaissent dispersés
+sur une vraie map générée (pas de coffres ni de scénario façon jeu de plateau).
+Chaque arène nommée, créée par un admin, **tourne en continu** dans son propre
+monde Bukkit dédié : elle reste ouverte en permanence (sauf pendant qu'une
+partie est lancée), et à chaque fin de partie elle supprime ce monde et en
+crée un nouveau, ce qui permet de faire tourner plusieurs arènes en parallèle
+sans jamais qu'elles se marchent dessus — et surtout, permet à chaque arène
+d'avoir sa **vraie** bordure de monde vanilla (voir plus bas).
+
+## Téléchargement
+
+Le jar prêt à l'emploi est dans la [release v1.7.0](../../releases/tag/v1.7.0). Tu peux aussi le compiler toi-même :
 
 ```bash
 mvn clean package
 ```
 
-Le jar est généré dans `target/hungergames-1.6.0.jar`.
+…ce qui produit `target/hungergames-1.7.0.jar` (voir plus bas pour le détail de la compilation).
 
-> **Note API Paper 1.21.1** : la régénération de chunks (`World#regenerateChunk`) est une API **spécifique à Paper** — elle lève une exception sur Spigot/CraftBukkit vanilla. C'est pour cela que le plugin dépend de `paper-api` et pas de `bukkit-api`.
+## Compilation (détails)
 
----
+```bash
+mvn clean package
+```
 
-## 📜 Limitations connues & pistes d'amélioration
+Produit `target/hungergames-1.7.0.jar`. Copie-le dans `plugins/` de ton
+serveur Paper 1.21.x. Le plugin dépend de `paper-api` (Bukkit seul ne suffit
+pas : `Bukkit#createWorld(WorldCreator)` et la `WorldBorder` réelle du monde
+sont utilisées en natif).
 
-- La régénération vanilla recalcule le terrain à partir du générateur du monde : toute construction permanente dans une cellule du pool sera perdue à la première régénération. Les zones du pool doivent rester de la nature « brute ».
-- La taille d'une zone (`zone.size`) est globale à tout le pool ; impossible d'avoir des arènes de tailles différentes sans changer la config pour tout le monde.
-- Le « mid » de la map n'est pas matérialisé par une structure — c'est simplement le centre géométrique de la zone (le lobby flottant est juste au-dessus).
-- Pas de système d'alliance in-game : comme demandé, ça reste au niveau des messages privés entre joueurs, en dehors du plugin.
-- Le mur de bordure en particules (1.5.0) et les dégâts manuels de bordure (1.6.0) ne remplacent pas la `WorldBorder` : ils la **complètent**. Les déplacements, la collision et la zone jouable restent gérés par la `WorldBorder` elle-même.
-- La complétion `TAB` propose les noms de zones/kits déjà existants et les sous-commandes, mais ne valide pas qu'un nouveau nom n'est pas déjà pris.
+⚠️ Paper API cible : `1.21.1-R0.1-SNAPSHOT` (POM). Sur des builds plus
+récentes de Paper 1.21+, l'API peut utiliser une surcharge
+`world.getWorldBorder().setSize(double, java.time.Duration)` ; le code utilise
+ici la surcharge `(double, long milliseconds)` qui est universelle. Si tu
+dois cibler une build très récente, tu peux passer cette ligne à `setSize(d,
+Duration.ofSeconds(seconds))` si ta version de `paper-api` l'expose.
 
----
+## Comment ça marche
 
-## 📝 Licence & crédits
+### Le hub
 
-Plugin écrit pour la communauté francophone HungerGames. Développé par **zzaee**.
+Une zone bornée entre **X/Z = -100 et 100** (rayon configurable via
+`hub.radius`), dans le monde partagé configuré (`world` dans `config.yml`),
+où les joueurs attendent hors partie. Une bordure de monde personnelle y
+confine automatiquement chaque joueur envoyé au hub (`ArenaManager#sendToHub`).
+Construis ton spawn/lobby central à l'intérieur de ces limites.
 
-Suggestions, bugs, pull requests : ouvrez une [issue](../../issues) sur le dépôt.
+### Un monde Bukkit dédié par arène
+
+Contrairement à une simple région découpée dans un grand monde partagé,
+**chaque arène vit dans son propre monde Bukkit** (voir `WorldAllocator`),
+créé dynamiquement sur le disque du serveur (dossier `hg_arena_<id>/`,
+préfixe configurable via `arena-worlds.arena-name-prefix`). C'est ce qui
+permet d'utiliser la **vraie** bordure de monde vanilla
+(`World#getWorldBorder()`) pour chaque arène — animée et infligeant ses
+dégâts nativement, de façon fiable — plutôt qu'une bordure "virtuelle"
+par-joueur (l'approche précédente, qui souffrait d'un bug Paper non résolu
+empêchant un rendu et une animation fiables, voir plus bas).
+
+### Cycle de vie d'une arène (persistante)
+
+1. `/hgadmin zone create <nom>` : un nouveau monde vanilla est créé (génération
+   normale, pas plat/vide) avec sa propre bordure configurée dessus, une
+   plateforme de verre est construite au centre (lobby flottant de cette
+   zone), et le reste de la zone se précharge en arrière-plan.
+2. L'arène reste **ouverte en continu** sous ce nom : `/hg join <nom>` ou le
+   GUI (`/hg gui`) permettent de la rejoindre à tout moment tant qu'une
+   partie n'y est pas en cours.
+3. Dès que le nombre minimum de joueurs est atteint et que la zone est
+   prête, un compte à rebours démarre (ou `/hgadmin zone forcestart <nom>`
+   force le départ).
+4. Pendant la partie : scatter aléatoire, période de grâce sans PVP, PVP,
+   bordure qui se referme progressivement — comme avant.
+5. **Fin de partie** : au lieu de disparaître, l'arène se réinitialise, crée
+   un **tout nouveau monde** dédié, y reconstruit son lobby et relance le
+   préchargement — elle redevient jouable dès que possible sous le même nom.
+   L'ancien monde, lui, est déchargé puis **supprimé du disque** en
+   arrière-plan une fois tout le monde parti (`WorldAllocator#deleteArenaWorld`),
+   pour repartir sur un terrain garanti vierge à chaque manche.
+
+Un admin peut aussi supprimer une arène à tout moment avec
+`/hgadmin zone delete <nom>` : la partie en cours (s'il y en a une) est
+annulée, tout le monde renvoyé au hub, le monde dédié supprimé, et le nom se
+libère immédiatement — cette fois l'arène ne redémarre pas.
+
+### Bordure par arène — la vraie bordure vanilla
+
+Chaque monde d'arène a sa **propre bordure de monde réelle**
+(`World#getWorldBorder()`), configurée à sa création par `WorldAllocator` :
+- centrée sur (0,0), taille = `zone.size` (1000 par défaut) ;
+- `damageBuffer = 0` et `damageAmount = 2.0`, soit environ 1 cœur par
+  seconde dès qu'on est hors des limites, sans la marge de quelques blocs
+  que Minecraft laisse par défaut avant de faire mal ;
+- animée nativement et fidèlement par le serveur lors des phases de
+  réduction (voir `Arena#startBorderShrink`), puisqu'il s'agit d'une vraie
+  bordure de monde et non d'une émulation.
+
+Comme chaque arène a son propre monde, sa bordure ne concerne que les
+joueurs qui s'y trouvent — plusieurs arènes tournent donc en parallèle sans
+jamais interférer entre elles, sans avoir besoin de gérer des bordures
+virtuelles par-joueur ni de particules pour simuler un mur.
+
+**Ancienne approche (abandonnée)** : les versions précédentes utilisaient une
+bordure virtuelle par-joueur (`Bukkit.createWorldBorder()` +
+`Player#setWorldBorder`), seule façon d'avoir plusieurs bordures différentes
+sur un même monde partagé. Mais Paper a un bug connu et non résolu sur cette
+fonctionnalité ([PaperMC/Paper#12372](https://github.com/PaperMC/Paper/issues/12372),
+[#7748](https://github.com/PaperMC/Paper/issues/7748)) : le paquet client qui
+affiche le mur n'est pas toujours envoyé, et l'animation de réduction ne
+progresse pas forcément côté serveur (pas de tick de monde pour la faire
+avancer sur une bordure "virtuelle"). Le plugin avait fini par compenser ça
+avec des dégâts et un mur de particules gérés à la main. Le passage à un
+monde dédié par arène rend tout ce contournement inutile : c'est maintenant
+la vraie mécanique vanilla qui s'occupe de tout, de façon fiable.
+
+## Commandes joueur
+
+- `/hg join [nom]` — rejoint une zone précise par son nom, ou n'importe
+  quelle zone ouverte si aucun nom n'est donné
+- `/hg leave` — quitte la partie en cours, **ou** le mode spectateur si tu observais une partie
+- `/hg kit`
+- `/hg arenas` (alias `/hg gui`) — ouvre le GUI listant toutes les zones actives
+- `/hg unspectate`
+
+## Système de spectateur et GUI d'arènes (inspiré de HikaBrain)
+
+`/hg arenas` ouvre un inventaire (54 slots, paginé au-delà de 45 zones) qui
+liste **toutes les zones créées**, avec leur nom :
+
+- **Vert/jaune** (chargement ou en attente) : clique pour rejoindre
+  directement cette zone précise.
+- **Rouge** (période de grâce ou PVP en cours) : clique pour la regarder en
+  **mode spectateur** (`GameMode.SPECTATOR`, téléporté sur la plateforme du
+  lobby de cette zone, avec la bordure de la zone appliquée).
+- Un bouton central **"Rejoindre une partie aléatoire"** place le joueur
+  automatiquement dans n'importe quelle zone actuellement ouverte.
+
+Un spectateur reçoit une boussole (slot 8, comme le `SPECTATOR_LEAVE_SLOT`
+d'HikaBrain) : clic pour repartir instantanément (`/hg unspectate`), sans
+pouvoir la lâcher ni la déplacer dans son inventaire
+(`com.herocraft.hungergames.listener.SpectatorListener`).
+
+Les joueurs éliminés en cours de partie basculent eux aussi automatiquement
+en spectateur de leur propre zone (déjà géré dans `CombatListener` /
+`Arena#onPlayerDeath`), avec la même bordure de zone.
+
+## Commandes admin (`hungergames.admin`, op par défaut)
+
+### Gestion des zones
+
+- `/hgadmin zone create <nom>` — crée une nouvelle arène persistante (nouveau
+  monde Bukkit dédié avec sa bordure configurée, construit le lobby flottant,
+  lance le préchargement)
+- `/hgadmin zone delete <nom>` — supprime définitivement une arène (annule la
+  partie en cours s'il y en a une, supprime son monde dédié, libère le nom)
+- `/hgadmin zone rename <ancien nom> <nouveau nom>`
+- `/hgadmin zone list` — liste toutes les arènes avec leur état
+- `/hgadmin zone info <nom>` — détails d'une arène (monde dédié, joueurs, spectateurs...)
+- `/hgadmin zone tp <nom>` — téléporte au lobby flottant de la zone actuelle de l'arène
+- `/hgadmin zone forcestart <nom>` — force le lancement même sous le seuil minimum de joueurs
+
+### Autres
+
+- `/hgadmin reload` — recharge `config.yml` et `kits.yml`
+- `/hgadmin list` — nombre d'arènes actuellement actives
+- `/hgadmin hub build` — (re)construit procéduralement le lobby central (voir ci-dessous)
+- `/hgadmin hub delete` — supprime les PNJ et régénère le terrain naturel du lobby
+- `/hgadmin kit create <id> <nom affiché>`
+- `/hgadmin kit delete <id>`
+- `/hgadmin kit additem <id>` — ajoute l'item en main au contenu du kit
+- `/hgadmin kit seticon <id>` — définit l'item en main comme icône du kit dans le menu
+- `/hgadmin kit list`
+
+## Le lobby central (`/hgadmin hub build`)
+
+Construit procéduralement, autour du point `hub.x/y/z`, un lobby complet :
+
+- **Spawn** : plaza circulaire (quartz/andésite polie) au centre, exactement
+  au point de spawn/retour configuré — c'est là que les joueurs apparaissent
+  en rejoignant le monde ou en revenant d'une partie.
+- **PNJ "rejoindre une arène"** : 3 ou 5 (`hub.build.npc-count`) pupitres
+  (bloc d'émeraude + lanternes) alignés symétriquement en face du spawn, à
+  `hub.build.npc-distance` blocs, reliés par une allée. Chaque pupitre porte
+  un villageois figé (sans IA, invulnérable) : clic droit dessus ouvre le
+  même GUI que `/hg gui`.
+- **Collines et montagnes** : le terrain autour de la plaza monte
+  progressivement en collines herbeuses puis en montagnes (andésite, neige
+  aux sommets) jusqu'au bord de la zone construite, avec un bruit procédural
+  (fonctions mathématiques, pas de vraie génération Minecraft) pour un rendu
+  naturel et pas répétitif.
+- **Références à la survie** : arbres (chêne/épicéa) dispersés dans les
+  collines, fleurs/herbes hautes, un petit campement (feu de camp, table de
+  craft, four, coffres, bottes de foin), et une entrée de mine creusée dans
+  un flanc de colline (torches, minerais de fer/charbon apparents, cadre en
+  bois).
+- **Barrière physique** : un mur de blocs `BARRIER` invisible est construit
+  tout autour de la zone (dans l'épaisseur des montagnes, donc caché), en
+  plus de la `WorldBorder` par joueur déjà posée par `ArenaManager#sendToHub`
+  — double sécurité pour qu'un joueur ne sorte jamais du lobby.
+
+⚠️ La construction touche potentiellement des dizaines de milliers de blocs
+(rayon 40 par défaut) : elle est étalée sur plusieurs secondes (~15-30s) via
+une tâche répétitive pour limiter l'impact sur le TPS, mais attends-toi à
+quelques à-coups. Lance-la de préférence hors des heures de forte affluence,
+et seulement une fois `world` configuré sur le bon monde. La relancer efface
+et reconstruit entièrement la zone (y compris les PNJ, qui sont d'abord
+supprimés proprement) — c'est le moyen le plus simple de changer le nombre
+de PNJ (`hub.build.npc-count`, 1 par défaut) : modifie la config puis relance
+`/hgadmin hub build`. Si tu veux repartir d'un terrain totalement naturel
+avant de reconstruire, utilise `/hgadmin hub delete` en premier (ça régénère
+le terrain vanilla, sans reconstruire ensuite).
+
+## Config (`config.yml`)
+
+Voir les commentaires dans le fichier, notamment :
+- `world` : le monde partagé où vit le **hub** uniquement (les arènes, elles,
+  ont chacune leur propre monde dédié, voir `arena-worlds`).
+- `hub.x/y/z` : point de spawn dans le hub (doit rester dans les bornes ci-dessous).
+- `hub.radius` : rayon (en blocs) de la zone hub bornée autour de (0,0), 100 par défaut
+  (donc -100 à 100 en X et Z).
+- `hub.build.*` : rayon construit, nombre de PNJ (1 à 7) et leur distance au
+  spawn pour `/hgadmin hub build` (voir section dédiée ci-dessus).
+- `arena-worlds.arena-name-prefix` : préfixe du nom de dossier des mondes
+  d'arène générés dynamiquement (`hg_arena_` par défaut).
+- `zone.size` : diamètre d'une zone/arène (1000 = rayon 500). Toutes les
+  arènes créées partagent cette même taille.
+- `zone.chunks-per-tick` : vitesse du préchargement d'un nouveau monde d'arène
+  (et de la zone construite du hub).
+- `zone.regen-chunks-per-tick` : vitesse de régénération de la zone du hub
+  uniquement (`/hgadmin hub delete`) — les arènes, elles, suppriment tout
+  leur monde d'un coup en fin de partie, pas besoin de régénérer chunk par
+  chunk.
+- `game.min-players` / `game.max-players` (jusqu'à 100).
+- `game.grace-period-seconds` : durée sans PVP après le scatter.
+- `game.border.shrink.*` : rétrécissement de la bordure en deux phases après
+  la période de grâce — `phase1` (comme avant), puis `pause-seconds` sans
+  rétrécir, puis `phase2` jusqu'à un petit cercle final au centre (10 blocs
+  de diamètre par défaut). La phase et le temps restant s'affichent dans le
+  tableau de bord pendant le PVP.
+
+## Persistance des zones entre redémarrages
+
+Chaque arène nommée sauvegarde le nom de son monde dédié actuel dans
+`plugins/HungerGames/arenas.yml`, mis à jour automatiquement à la création,
+au renommage, à la suppression, et **à chaque cycle vers un nouveau monde**
+en fin de partie. Au démarrage du plugin, toutes les arènes sauvegardées sont
+automatiquement rechargées sur le monde qu'elles occupaient (le dossier de
+monde est rechargé tel quel s'il existe encore, le lobby flottant reconstruit,
+le préchargement relancé) — plus besoin de refaire `/hgadmin zone create`
+après chaque redémarrage. Si le dossier sauvegardé est introuvable (cas rare,
+ex. suppression manuelle), un nouveau monde vide est créé à la place avec un
+avertissement dans les logs.
+
+## Complétion par tabulation
+
+`/hg` et `/hgadmin` (et leurs sous-commandes) proposent une complétion
+contextuelle : sous-commandes disponibles, noms de zones existantes pour
+`/hg join`, `/hgadmin zone delete|rename|info|tp|forcestart`, et identifiants
+de kits pour `/hgadmin kit delete|additem|seticon`.
+
+## Confort hors partie (hub, attente, spectateurs)
+
+- **Inventaire toujours vide** : à chaque envoi au hub (connexion, fin de
+  partie, `/hg leave`, `/hg unspectate`, respawn) ainsi qu'à chaque
+  rejointe d'une arène (`Arena#addPlayer`), l'inventaire du joueur est vidé.
+- **Faim toujours pleine hors partie active** : un `FoodLevelChangeEvent`
+  global annule toute perte de faim et remet la barre à fond tant que le
+  joueur n'est pas dans une partie en `GRACE_PERIOD` ou `PVP` — ça couvre le
+  hub, les salles d'attente d'arène (`PRELOADING`/`WAITING`/`STARTING`), et
+  le mode spectateur. La faim ne redevient "normale" (et donc utile pour le
+  farm) qu'une fois la partie réellement lancée.
+- **Cage dans la salle d'attente** : la plateforme flottante de chaque zone
+  est maintenant entourée d'une cage de blocs barrière (sol invisible entre
+  le bord du verre et le mur, + mur de plusieurs blocs de haut) pour qu'on ne
+  puisse ni en tomber ni s'en éloigner en marchant pendant l'attente. Cette
+  cage est **automatiquement retirée au lancement de la partie**
+  (`Arena#removeLobbyCage`, appelé en tout début de `beginGame()`), pour que
+  les spectateurs qui viennent ensuite observer le match puissent voler
+  librement dans toute la zone (jusqu'à sa `WorldBorder`) sans être coincés
+  sur la petite plateforme. Réglages : `lobby.cage-margin` et
+  `lobby.cage-height`.
+- **Suggestion de kit cliquable** : dès qu'un joueur rejoint une zone (si
+  elle est déjà prête) ou dès qu'une zone en cours de préchargement devient
+  prête, un message cliquable "choisis ton kit avec `/hg kit`" est envoyé —
+  cliquer dessus exécute directement la commande.
+- **Pas de spawn en pleine mer** : le scatter aléatoire (`RandomLocationUtil`)
+  rejette maintenant les points candidats situés sur de l'eau, de la glace
+  flottante ou de la lave avant de les retenir (deux passes de tentatives,
+  avec repli progressif de la distance minimale entre joueurs si besoin) —
+  les joueurs n'apparaissent plus en plein océan au lancement d'une partie.
+  Cas extrême (zone quasi entièrement recouverte d'eau) : en dernier
+  recours, un point est quand même choisi pour garantir que tout le monde
+  apparaît bien quelque part.
+- **Impossible de rejoindre pendant le chargement** : `Arena#isJoinable()` ne
+  renvoie plus vrai que pour `WAITING`/`STARTING` (plus `PRELOADING`) — une
+  zone en cours de préchargement apparaît en jaune "Chargement..." dans le
+  GUI et n'est ni cliquable pour la rejoindre, ni proposée par
+  `/hg join`/le bouton aléatoire tant qu'elle n'est pas prête.
+- **GUI des arènes en temps réel** : une tâche répétitive
+  (`ArenaGUI#refreshOpenViewers`, toutes les secondes) réécrit le contenu de
+  l'inventaire de chaque joueur qui a le GUI ouvert (sans le fermer/rouvrir)
+  — nombre de joueurs, état, nombre total de zones se mettent à jour en direct.
+- **Items de la salle d'attente** : en plus de la boussole des spectateurs,
+  chaque joueur en attente dans une arène reçoit une épée en pierre (slot 1,
+  clique pour ouvrir `/hg kit`) et un bloc barrière en 5ᵉ case de la hotbar
+  (slot 5, clique pour `/hg leave`), tous deux protégés contre le drop et le
+  déplacement dans l'inventaire (`WaitingRoomListener`).
+- **Pseudos masqués pendant la partie** : dès qu'une arène passe en
+  `GRACE_PERIOD` ou `PVP`, le pseudo au-dessus de la tête de chaque
+  participant est masqué pour tous ceux qui regardent cette arène (joueurs
+  et spectateurs), via une équipe de scoreboard dédiée
+  (`Team.Option.NAME_TAG_VISIBILITY` à `NEVER`) recréée à chaque
+  rafraîchissement du tableau de bord. Redevient normal une fois la partie
+  terminée (nouvelle zone, nouveau tableau de bord).
+- **Dégâts et réduction de bordure** : chaque monde d'arène a sa propre
+  **vraie** bordure vanilla (`World#getWorldBorder()`, configurée par
+  `WorldAllocator` — `damageBuffer = 0`, `damageAmount = 2.0`, soit environ
+  1 cœur par seconde hors des limites). C'est le serveur qui gère nativement
+  l'animation et les dégâts, de façon fiable — plus aucun bricolage de notre
+  côté (dégâts manuels, mur de particules) n'est nécessaire, contrairement à
+  l'ancienne approche par bordure virtuelle par-joueur (voir la section
+  "Bordure par arène" plus haut pour le détail du problème que ça réglait).
+- **Kill-feed dans le chat** : à chaque mort, un message est envoyé à tous
+  les participants de l'arène (joueurs + spectateurs) — "X a éliminé Y !" si
+  le dernier dégât reçu venait d'un autre joueur, sinon "Y est mort." (mort
+  hors combat direct : chute, faim, bordure...). Ce message part dans tous
+  les cas, pas seulement sur un kill entre joueurs.
+- **Bordure en deux phases avec suivi dans le tableau de bord** : après la
+  période de grâce, une première réduction de bordure se lance (comme
+  avant) ; une fois terminée, la zone reste stable pendant
+  `game.border.shrink.pause-seconds` (5 minutes par défaut), puis une
+  réduction finale ramène la bordure à un petit cercle central
+  (`phase2.target-diameter`, 10 blocs par défaut). La phase en cours et le
+  temps restant s'affichent en direct dans le tableau de bord à droite
+  pendant tout le PVP (`Arena#refreshScoreboard`). Le tableau de bord affiche
+  aussi, dès le début de la partie (période de grâce comprise), la **taille
+  actuelle de la zone** (`World#getWorldBorder().getSize()`, donc toujours à
+  jour même en pleine animation) et la **distance du joueur au centre de
+  l'arène** — propre à chaque joueur, calculée depuis sa position réelle à
+  chaque rafraîchissement.
+- **Fin de partie différée (~10s)** : dès qu'il ne reste plus qu'un survivant
+  (ou zéro), la partie est décidée immédiatement (plus de dégâts/PVP), mais
+  le retour au hub est différé de `game.end-delay-seconds` (10s par défaut) :
+  le vainqueur reste en `SURVIVAL` sur place, tout le monde (joueurs déjà
+  spectateurs, et les rares survivants non-vainqueurs dans un cas limite) est
+  mis/laissé en `SPECTATOR`. Une fois le délai écoulé, tout le monde
+  (participants + spectateurs externes) est automatiquement téléporté au hub
+  et l'arène cycle vers sa prochaine zone.
+- **Niveau d'XP remis à zéro** : au lancement de chaque partie, le niveau et
+  la barre d'expérience de chaque joueur sont réinitialisés à 0
+  (`Player#setLevel/setExp/setTotalExperience`), pour repartir sur une base
+  propre à chaque manche.
+- **Lobby d'attente retiré au lancement** : en plus de la cage (déjà retirée
+  auparavant), la plateforme de verre elle-même et sa lanterne marine sont
+  maintenant effacées dès le tout début de `beginGame()`. Les spectateurs qui
+  viendront ensuite regarder le match (mode `SPECTATOR`, sans gravité) n'ont
+  pas besoin de sol pour tenir en l'air.
+- **Tableau des scores (`/hg top`)** : chaque victoire est comptabilisée par
+  joueur et persistée dans `plugins/HungerGames/stats.yml`
+  (`StatsManager`). `/hg top` (alias `/hg scores`) ouvre un classement en
+  têtes de joueurs triées par nombre de victoires. Un PNJ dédié est aussi
+  placé au hub (`/hgadmin hub build`), du côté opposé aux PNJ d'arène, pour y
+  accéder directement en jeu.
+- **Affichage des kits corrigé** : le sélecteur de kits utilisait
+  `legacySection()` (codes `§`) pour interpréter des noms écrits en `&`
+  (format `kits.yml`, ex. `&6Bucheron`), qui s'affichaient donc en texte brut
+  avec le `&` littéral au lieu d'être colorés. Il utilise maintenant
+  `legacyAmpersand()`, le bon parseur pour ce format. Chaque kit affiche
+  aussi désormais son contenu dans sa description (liste des items et
+  quantités) directement dans le menu `/hg kit`.
+- **Joueurs morts = vrais spectateurs** : à la mort, un joueur devient
+  invisible aux joueurs encore en vie de son arène (`Player#hidePlayer`,
+  restauré à la fin de la manche via `Arena#restoreVisibility`) — en plus
+  d'être déjà en `GameMode.SPECTATOR` (donc sans collision). Son chat est
+  également isolé (`DeadChatListener`, basé sur `AsyncChatEvent`) : ses
+  messages ne sont visibles que par les autres morts et spectateurs de la
+  même arène, jamais par les joueurs encore en jeu. Il reçoit aussi une
+  boussole ("Suivre un joueur en vie", slot 1) qui ouvre un GUI listant tous
+  les joueurs encore en vie (têtes de joueurs) — cliquer dessus téléporte
+  instantanément à ce joueur, avec vérification qu'il est toujours en vie
+  au moment du clic.
+
+## Limitations connues / pistes d'amélioration
+
+- **Espace disque et temps de création** : chaque arène est un vrai monde
+  Bukkit sur le disque (dossier complet avec fichiers de région). Créer une
+  arène crée un monde (quelques secondes, hitch possible pendant la
+  génération de la zone de spawn initiale) ; en fin de partie, l'ancien monde
+  est supprimé automatiquement, mais prévois de la marge disque si tu fais
+  tourner beaucoup d'arènes en simultané, et surveille le nombre de mondes
+  chargés (`/hgadmin list`).
+- La taille d'une arène (`zone.size`) est globale : impossible d'avoir des
+  arènes de tailles différentes sans changer la config pour toutes les
+  arènes futures.
+- Le "mid" de la map n'est pas matérialisé par une structure : c'est
+  simplement le centre géométrique de la zone (le lobby flottant est juste
+  au-dessus). Je peux ajouter un marqueur (beacon, colonne) si tu veux qu'il
+  soit visible depuis le sol.
+- Pas de système d'alliance in-game : comme demandé, ça reste au niveau des
+  MP entre joueurs, en dehors du plugin.
+- La complétion par tabulation propose les noms de zones/kits déjà existants
+  et les sous-commandes, mais ne valide rien d'autre (elle ne vérifie pas par
+  exemple qu'un nouveau nom de zone n'est pas déjà pris).

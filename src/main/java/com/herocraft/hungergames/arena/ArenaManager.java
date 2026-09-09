@@ -21,7 +21,7 @@ import java.util.UUID;
 public class ArenaManager {
 
     private final HungerGamesPlugin plugin;
-    private final ZoneAllocator zoneAllocator;
+    private final WorldAllocator worldAllocator;
     private final File arenasFile;
     private final Map<UUID, Arena> arenas = new LinkedHashMap<>();
     private final Map<String, Arena> namedArenas = new LinkedHashMap<>();
@@ -30,13 +30,13 @@ public class ArenaManager {
 
     public ArenaManager(HungerGamesPlugin plugin) {
         this.plugin = plugin;
-        int cellSize = plugin.getConfig().getInt("zone.size", 1000);
-        int poolRadiusCells = plugin.getConfig().getInt("zone.pool-radius-cells", 50);
-        this.zoneAllocator = new ZoneAllocator(cellSize, poolRadiusCells);
+        String prefix = plugin.getConfig().getString("arena-worlds.arena-name-prefix", "hg_arena_");
+        this.worldAllocator = new WorldAllocator(plugin, prefix);
         this.arenasFile = new File(plugin.getDataFolder(), "arenas.yml");
         loadPersistedArenas();
     }
 
+    /** Le monde partagé où vit le hub (configuré via {@code world} dans config.yml). */
     public World getGameWorld() {
         String worldName = plugin.getConfig().getString("world", "world");
         World world = org.bukkit.Bukkit.getWorld(worldName);
@@ -72,6 +72,10 @@ public class ArenaManager {
         player.setScoreboard(org.bukkit.Bukkit.getScoreboardManager().getMainScoreboard());
     }
 
+    public WorldAllocator getWorldAllocator() {
+        return worldAllocator;
+    }
+
     // ---------------------------------------------------------------- gestion des zones (admin)
 
     private static final java.util.regex.Pattern NAME_PATTERN = java.util.regex.Pattern.compile("^[a-zA-Z0-9_-]{1,32}$");
@@ -85,38 +89,37 @@ public class ArenaManager {
     }
 
     /**
-     * Crée une nouvelle zone nommée : tire une cellule au hasard, actuellement libre,
-     * dans le pool (voir {@link ZoneAllocator}), et lance le préchargement. L'arène
-     * reste ouverte en continu par la suite : à chaque fin de partie, elle régénère
-     * la zone utilisée et en reprend une autre au hasard (voir {@link Arena}).
-     * Renvoie la zone créée, ou vide si le nom est invalide/déjà pris.
+     * Crée une nouvelle zone nommée : génère un monde Bukkit dédié à cette arène
+     * (voir {@link WorldAllocator}, qui lui configure une vraie bordure vanilla),
+     * et lance le préchargement. L'arène reste ouverte en continu par la suite :
+     * à chaque fin de partie, elle supprime son monde et en crée un nouveau (voir
+     * {@link Arena}). Renvoie la zone créée, ou vide si le nom est invalide/déjà pris.
      */
     public Optional<Arena> createNamedZone(String name) {
         if (!isValidName(name)) return Optional.empty();
         if (namedArenas.containsKey(name.toLowerCase())) return Optional.empty();
 
-        World world = getGameWorld();
-        ZoneAllocator.Zone zone = zoneAllocator.allocateRandomFreeCell();
-        Arena arena = new Arena(plugin, name, world, zone);
+        int size = plugin.getConfig().getInt("zone.size", 1000);
+        World world = worldAllocator.createArenaWorld(size);
+        Arena arena = new Arena(plugin, name, world, new Zone(0, 0, size));
         arenas.put(arena.getId(), arena);
         namedArenas.put(name.toLowerCase(), arena);
         arena.startPreload();
         savePersistedArenas();
-        plugin.getLogger().info("Zone '" + name + "' créée sur la cellule (" + zone.cellX() + "," + zone.cellZ() +
-                ") -> centre (" + zone.centerX() + "," + zone.centerZ() + "), taille " + zone.size());
+        plugin.getLogger().info("Zone '" + name + "' créée sur le monde dédié '" + world.getName() + "', taille " + size);
         return Optional.of(arena);
     }
 
     /**
      * Supprime définitivement une zone nommée : si une partie y est en cours, elle
-     * est annulée (tout le monde renvoyé au hub, pas de vainqueur), la zone est
-     * régénérée puis relâchée dans le pool. Le nom redevient immédiatement disponible.
+     * est annulée (tout le monde renvoyé au hub, pas de vainqueur), son monde dédié
+     * est supprimé du disque. Le nom redevient immédiatement disponible.
      */
     public boolean deleteZone(String name) {
         Arena arena = namedArenas.get(name.toLowerCase());
         if (arena == null) return false;
         // forceCancel() est protégé en interne (drapeau "destroyed") et déclenche
-        // onArenaEnded(), qui nettoie déjà toutes les maps + régénère/relâche la zone.
+        // onArenaEnded(), qui nettoie déjà toutes les maps + supprime le monde.
         arena.forceCancel("Zone supprimée par un administrateur.");
         return true;
     }
@@ -247,9 +250,9 @@ public class ArenaManager {
 
     /**
      * Nettoyage après une fin de partie NORMALE (l'arène continue d'exister et
-     * cycle vers une nouvelle zone, voir {@link Arena#getState()}) : seuls les
+     * cycle vers un nouveau monde, voir {@link Arena#getState()}) : seuls les
      * joueurs/spectateurs sont détachés, l'arène elle-même reste enregistrée.
-     * La nouvelle cellule occupée doit être sauvegardée (voir Arena#cycleToNewZone
+     * Le nouveau nom de monde occupé doit être sauvegardé (voir Arena#cycleToNewWorld
      * qui appelle {@link #savePersistedArenas()} juste après).
      */
     public void onRoundEnded(Arena arena) {
@@ -270,16 +273,15 @@ public class ArenaManager {
     // ---------------------------------------------------------------- persistance des zones
 
     /**
-     * Réécrit entièrement {@code arenas.yml} avec l'état courant (nom -> cellule
-     * occupée) de toutes les arènes nommées. Appelé à chaque création, suppression,
-     * renommage, et à chaque cycle vers une nouvelle zone (voir Arena#cycleToNewZone).
+     * Réécrit entièrement {@code arenas.yml} avec l'état courant (nom -> nom du
+     * monde dédié) de toutes les arènes nommées. Appelé à chaque création,
+     * suppression, renommage, et à chaque cycle vers un nouveau monde (voir
+     * Arena#cycleToNewWorld).
      */
     public void savePersistedArenas() {
         YamlConfiguration yaml = new YamlConfiguration();
         for (Arena arena : namedArenas.values()) {
-            String base = "arenas." + arena.getName();
-            yaml.set(base + ".cellX", arena.getZone().cellX());
-            yaml.set(base + ".cellZ", arena.getZone().cellZ());
+            yaml.set("arenas." + arena.getName() + ".world", arena.getWorld().getName());
         }
         try {
             if (!plugin.getDataFolder().exists()) {
@@ -291,35 +293,29 @@ public class ArenaManager {
         }
     }
 
-    /** Recrée au démarrage les arènes sauvegardées, sur les mêmes cellules qu'avant l'arrêt. */
+    /** Recrée au démarrage les arènes sauvegardées, sur les mêmes mondes dédiés qu'avant l'arrêt. */
     private void loadPersistedArenas() {
         if (!arenasFile.exists()) return;
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(arenasFile);
         ConfigurationSection section = yaml.getConfigurationSection("arenas");
         if (section == null) return;
 
-        World world;
-        try {
-            world = getGameWorld();
-        } catch (IllegalStateException e) {
-            plugin.getLogger().warning("Impossible de restaurer les zones sauvegardées : " + e.getMessage());
-            return;
-        }
+        int size = plugin.getConfig().getInt("zone.size", 1000);
 
         for (String name : section.getKeys(false)) {
             ConfigurationSection s = section.getConfigurationSection(name);
             if (s == null) continue;
-            int cellX = s.getInt("cellX");
-            int cellZ = s.getInt("cellZ");
+            String worldName = s.getString("world");
+            if (worldName == null) continue;
             try {
-                ZoneAllocator.Zone zone = zoneAllocator.reserveCell(cellX, cellZ);
-                Arena arena = new Arena(plugin, name, world, zone);
+                World world = worldAllocator.loadOrCreateArenaWorld(worldName, size);
+                Arena arena = new Arena(plugin, name, world, new Zone(0, 0, size));
                 arenas.put(arena.getId(), arena);
                 namedArenas.put(name.toLowerCase(), arena);
                 arena.startPreload();
-                plugin.getLogger().info("Zone '" + name + "' restaurée sur la cellule (" + cellX + "," + cellZ + ").");
+                plugin.getLogger().info("Zone '" + name + "' restaurée sur le monde '" + worldName + "'.");
             } catch (IllegalStateException e) {
-                plugin.getLogger().warning("Cellule (" + cellX + "," + cellZ + ") indisponible, zone '" + name + "' non restaurée.");
+                plugin.getLogger().warning("Impossible de restaurer la zone '" + name + "' (" + worldName + ") : " + e.getMessage());
             }
         }
     }
@@ -342,9 +338,5 @@ public class ArenaManager {
 
     public Map<UUID, Arena> getArenas() {
         return arenas;
-    }
-
-    public ZoneAllocator getZoneAllocator() {
-        return zoneAllocator;
     }
 }

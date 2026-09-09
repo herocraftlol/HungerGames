@@ -1,6 +1,6 @@
 package com.herocraft.hungergames.util;
 
-import com.herocraft.hungergames.arena.ZoneAllocator;
+import com.herocraft.hungergames.arena.Zone;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -21,7 +21,7 @@ public final class RandomLocationUtil {
     private RandomLocationUtil() {
     }
 
-    public static List<Location> scatter(World world, ZoneAllocator.Zone zone, int marginBlocks,
+    public static List<Location> scatter(World world, Zone zone, int marginBlocks,
                                           int count, double minDistance) {
         Random random = new Random();
         List<Location> result = new ArrayList<>();

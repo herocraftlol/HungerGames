@@ -22,6 +22,7 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -29,13 +30,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Une arène vit désormais dans son propre monde Bukkit dédié (voir
+ * {@link WorldAllocator}), pas dans une simple région d'un grand monde
+ * partagé : ça permet d'utiliser la VRAIE bordure de monde vanilla
+ * ({@code World#getWorldBorder()}), fiable (animation et dégâts nativement
+ * gérés par le serveur), au lieu d'une bordure "virtuelle" par-joueur.
+ */
 public class Arena {
 
     private final HungerGamesPlugin plugin;
     private final UUID id = UUID.randomUUID();
     private String name;
-    private final World world;
-    private ZoneAllocator.Zone zone;
+    private World world;
+    private Zone zone;
     private Location lobbyLocation;
 
     private ArenaState state = ArenaState.PRELOADING;
@@ -49,36 +57,31 @@ public class Arena {
     private BukkitTask graceTask;
     private BukkitTask shrinkTask;
     private BukkitTask scoreboardTask;
-    private BukkitTask borderDamageTask;
-    private BukkitTask borderVisualTask;
     private int countdownSecondsLeft;
     private boolean forcedStart = false;
     private boolean destroyed = false;
     private BorderPhase borderPhase = BorderPhase.NONE;
     private long borderPhaseEndMillis = 0L;
-    private double borderSizeAtPhaseStart = 0;
-    private double borderSizeTarget = 0;
-    private long borderAnimStartMillis = 0L;
-    private long borderAnimDurationMillis = 0L;
 
-    public Arena(HungerGamesPlugin plugin, String name, World world, ZoneAllocator.Zone zone) {
+    public Arena(HungerGamesPlugin plugin, String name, World world, Zone zone) {
         this.plugin = plugin;
         this.name = name;
-        this.world = world;
-        setupZone(zone);
+        setupWorld(world, zone);
         startScoreboardLoop();
     }
 
     /**
-     * (Ré)initialise l'arène sur une nouvelle cellule de la grille : reconstruit la
-     * plateforme de lobby flottante au centre de cette nouvelle zone et met à jour
-     * la position de téléportation du lobby. Appelé à la création de l'arène, puis
-     * à chaque nouveau tour du cycle (voir {@link #cycleToNewZone()}).
+     * (Ré)initialise l'arène sur un nouveau monde dédié : reconstruit la
+     * plateforme de lobby flottante au centre (toujours (0,0) dans le monde de
+     * l'arène) et met à jour la position de téléportation du lobby. Appelé à la
+     * création de l'arène, puis à chaque nouveau tour du cycle (voir
+     * {@link #cycleToNewWorld()}).
      */
-    private void setupZone(ZoneAllocator.Zone newZone) {
+    private void setupWorld(World newWorld, Zone newZone) {
+        this.world = newWorld;
         this.zone = newZone;
         int lobbyY = plugin.getConfig().getInt("lobby.y", 200);
-        this.lobbyLocation = new Location(world, newZone.centerX() + 0.5, lobbyY, newZone.centerZ() + 0.5);
+        this.lobbyLocation = new Location(world, zone.centerX() + 0.5, lobbyY, zone.centerZ() + 0.5);
         buildLobbyPlatform();
     }
 
@@ -149,16 +152,6 @@ public class Arena {
         }
     }
 
-    /**
-     * Configure les dégâts de bordure : ~1 cœur (2 PV) par seconde dès qu'on est
-     * hors de la bordure, sans zone tampon (le vanilla par défaut laisse quelques
-     * blocs de marge avant de faire mal).
-     */
-    private static void configureBorderDamage(WorldBorder border) {
-        border.setDamageAmount(2.0);
-        border.setDamageBuffer(0.0);
-    }
-
     // ---------------------------------------------------------------- getters
 
     public UUID getId() {
@@ -177,7 +170,7 @@ public class Arena {
         return state;
     }
 
-    public ZoneAllocator.Zone getZone() {
+    public Zone getZone() {
         return zone;
     }
 
@@ -264,18 +257,15 @@ public class Arena {
             preloadBar.addPlayer(player);
         }
 
-        WorldBorder border = org.bukkit.Bukkit.createWorldBorder();
-        border.setCenter(zone.centerX() + 0.5, zone.centerZ() + 0.5);
-        border.setSize(zone.size());
-        configureBorderDamage(border);
-        player.setWorldBorder(border);
-
         player.getInventory().clear();
         player.getInventory().setItem(0, WaitingRoomItems.createKitSelectorItem(plugin));
         player.getInventory().setItem(4, WaitingRoomItems.createLeaveItem(plugin));
         player.setFoodLevel(20);
         player.setSaturation(20f);
 
+        // Pas besoin de bordure par-joueur : le monde de cette arène a sa propre
+        // bordure réelle (voir WorldAllocator), qui s'applique automatiquement à
+        // tous ceux qui s'y trouvent.
         player.teleport(lobbyLocation);
         player.setGameMode(GameMode.ADVENTURE);
         refreshScoreboard(player);
@@ -322,11 +312,6 @@ public class Arena {
         player.getInventory().clear();
         player.getInventory().setItem(8, SpectatorItems.createLeaveItem(plugin));
 
-        WorldBorder border = org.bukkit.Bukkit.createWorldBorder();
-        border.setCenter(zone.centerX() + 0.5, zone.centerZ() + 0.5);
-        border.setSize(zone.size());
-        player.setWorldBorder(border);
-
         refreshScoreboard(player);
         player.sendMessage(Component.text("Tu observes la partie en spectateur. Utilise la boussole (ou /hg unspectate) pour repartir.", NamedTextColor.AQUA));
         return true;
@@ -335,7 +320,6 @@ public class Arena {
     /** Fait sortir un joueur du mode spectateur de cette arène (ne fait rien s'il ne spectate pas). */
     public void removeSpectator(Player player) {
         if (!spectators.remove(player.getUniqueId())) return;
-        player.setWorldBorder(null);
         player.getInventory().clear();
         player.setScoreboard(org.bukkit.Bukkit.getScoreboardManager().getMainScoreboard());
     }
@@ -414,8 +398,8 @@ public class Arena {
 
     /**
      * Arrête définitivement l'arène (suppression admin) : contrairement à une fin de
-     * partie normale, la zone n'est pas reprise pour un nouveau tour — elle est
-     * régénérée puis relâchée dans le pool, et l'arène elle-même est détruite.
+     * partie normale, le monde n'est pas repris pour un nouveau tour — il est
+     * supprimé, et l'arène elle-même est détruite.
      */
     public void forceCancel(String reason) {
         if (destroyed) return;
@@ -425,8 +409,6 @@ public class Arena {
         if (graceTask != null) graceTask.cancel();
         if (shrinkTask != null) shrinkTask.cancel();
         if (scoreboardTask != null) scoreboardTask.cancel();
-        if (borderDamageTask != null) borderDamageTask.cancel();
-        if (borderVisualTask != null) borderVisualTask.cancel();
 
         Component message = Component.text("Partie annulée : " + reason, NamedTextColor.RED);
         for (UUID uuid : players) {
@@ -439,7 +421,7 @@ public class Arena {
         restoreVisibility();
         removeAllSpectators();
         plugin.getArenaManager().onArenaEnded(this);
-        regenerateAndRelease(zone);
+        plugin.getArenaManager().getWorldAllocator().deleteArenaWorld(world);
     }
 
     private void beginGame() {
@@ -471,40 +453,13 @@ public class Arena {
             p.setExp(0f);
             p.setTotalExperience(0);
 
-            WorldBorder border = org.bukkit.Bukkit.createWorldBorder();
-            border.setCenter(zone.centerX() + 0.5, zone.centerZ() + 0.5);
-            border.setSize(zone.size());
-            configureBorderDamage(border);
-            p.setWorldBorder(border);
-
             p.sendMessage(Component.text("La partie commence ! PVP désactivé pendant " +
                     (plugin.getConfig().getInt("game.grace-period-seconds", 300) / 60) + " minutes.", NamedTextColor.GREEN));
         }
 
         state = ArenaState.GRACE_PERIOD;
-
-        // Suivi manuel de la taille de bordure "actuelle" (voir getCurrentBorderDiameter) :
-        // on ne se fie pas à WorldBorder#getSize() pour une bordure virtuelle par-joueur,
-        // qui ne s'anime pas forcément côté serveur. Au lancement, la bordure est fixe
-        // (pas d'animation en cours) à la taille complète de la zone.
-        borderSizeAtPhaseStart = zone.size();
-        borderSizeTarget = zone.size();
-        borderAnimStartMillis = System.currentTimeMillis();
-        borderAnimDurationMillis = 0L;
-
         int graceSeconds = plugin.getConfig().getInt("game.grace-period-seconds", 300);
         graceTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, this::endGracePeriod, graceSeconds * 20L);
-
-        // Dégâts manuels hors bordure : le WorldBorder par joueur n'applique pas
-        // toujours fidèlement ses dégâts vanilla, donc on les gère nous-mêmes,
-        // que la bordure soit en train de bouger ou non.
-        borderDamageTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, this::tickBorderDamage, 20L, 20L);
-
-        // Rendu manuel du mur de bordure (particules) : le WorldBorder par-joueur
-        // de Paper est connu pour ne pas toujours envoyer le paquet client qui
-        // affiche le mur (bug Paper non résolu, cf. PaperMC/Paper#12372/#7748),
-        // donc on ne se fie plus qu'à notre propre rendu, systématiquement visible.
-        borderVisualTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, this::tickBorderVisuals, 10L, 10L);
     }
 
     /**
@@ -521,89 +476,6 @@ public class Arena {
                     world.getBlockAt(zone.centerX() + dx, lobbyY - 1, zone.centerZ() + dz)
                             .setType(org.bukkit.Material.AIR, false);
                 }
-            }
-        }
-    }
-
-    /** Inflige ~1 cœur (2 PV) à chaque joueur actuellement hors de sa bordure. */
-    private void tickBorderDamage() {
-        double half = getCurrentBorderDiameter() / 2.0;
-        double centerX = zone.centerX() + 0.5;
-        double centerZ = zone.centerZ() + 0.5;
-
-        for (UUID uuid : players) {
-            if (!alive.contains(uuid)) continue;
-            Player p = org.bukkit.Bukkit.getPlayer(uuid);
-            if (p == null) continue;
-
-            Location loc = p.getLocation();
-            double dx = Math.abs(loc.getX() - centerX);
-            double dz = Math.abs(loc.getZ() - centerZ);
-            if (dx > half || dz > half) {
-                p.damage(2.0);
-            }
-        }
-    }
-
-    /** Affiche un mur de particules le long de la bordure, pour chaque joueur proche d'un bord. */
-    private void tickBorderVisuals() {
-        for (UUID uuid : players) {
-            if (!alive.contains(uuid)) continue;
-            Player p = org.bukkit.Bukkit.getPlayer(uuid);
-            if (p != null) renderBorderWall(p);
-        }
-    }
-
-    private void renderBorderWall(Player p) {
-        double half = getCurrentBorderDiameter() / 2.0;
-        double centerX = zone.centerX() + 0.5;
-        double centerZ = zone.centerZ() + 0.5;
-        Location loc = p.getLocation();
-
-        double minX = centerX - half, maxX = centerX + half;
-        double minZ = centerZ - half, maxZ = centerZ + half;
-        double visibility = 32;
-
-        if (Math.abs(loc.getX() - minX) <= visibility) drawWallAtX(p, minX, loc.getZ(), visibility);
-        if (Math.abs(loc.getX() - maxX) <= visibility) drawWallAtX(p, maxX, loc.getZ(), visibility);
-        if (Math.abs(loc.getZ() - minZ) <= visibility) drawWallAtZ(p, loc.getX(), minZ, visibility);
-        if (Math.abs(loc.getZ() - maxZ) <= visibility) drawWallAtZ(p, loc.getX(), maxZ, visibility);
-    }
-
-    /**
-     * Taille (diamètre) actuelle "réelle" de la bordure, en interpolant nous-mêmes
-     * entre le début et la fin de la dernière animation demandée
-     * ({@link #applyBorderSize}). Nécessaire car {@code WorldBorder#getSize()} sur
-     * une bordure virtuelle par-joueur ne reflète pas forcément l'animation en
-     * cours côté serveur (pas de tick de monde pour la faire progresser) : sans ce
-     * suivi manuel, le mur de particules et les dégâts sautaient directement à la
-     * taille finale au lieu de réduire progressivement.
-     */
-    private double getCurrentBorderDiameter() {
-        if (borderAnimDurationMillis <= 0) return borderSizeTarget;
-        long elapsed = System.currentTimeMillis() - borderAnimStartMillis;
-        if (elapsed >= borderAnimDurationMillis) return borderSizeTarget;
-        double t = elapsed / (double) borderAnimDurationMillis;
-        return borderSizeAtPhaseStart + (borderSizeTarget - borderSizeAtPhaseStart) * t;
-    }
-
-    private static final org.bukkit.Particle.DustOptions BORDER_DUST =
-            new org.bukkit.Particle.DustOptions(org.bukkit.Color.fromRGB(255, 50, 50), 1.3f);
-
-    private void drawWallAtX(Player p, double x, double centerZ, double span) {
-        double baseY = p.getLocation().getY();
-        for (double dz = -span; dz <= span; dz += 2.0) {
-            for (double dy = -4; dy <= 6; dy += 1.5) {
-                p.spawnParticle(org.bukkit.Particle.DUST, x, baseY + dy, centerZ + dz, 1, 0, 0, 0, 0, BORDER_DUST);
-            }
-        }
-    }
-
-    private void drawWallAtZ(Player p, double centerX, double z, double span) {
-        double baseY = p.getLocation().getY();
-        for (double dx = -span; dx <= span; dx += 2.0) {
-            for (double dy = -4; dy <= 6; dy += 1.5) {
-                p.spawnParticle(org.bukkit.Particle.DUST, centerX + dx, baseY + dy, z, 1, 0, 0, 0, 0, BORDER_DUST);
             }
         }
     }
@@ -631,12 +503,13 @@ public class Arena {
     }
 
     /**
-     * Enchaîne les phases de réduction de bordure : une première réduction
-     * (comme avant), puis une pause de quelques minutes une fois celle-ci
-     * terminée, puis une réduction finale jusqu'à un tout petit cercle au
-     * centre de la zone. Chaque étape est suivie dans {@link #borderPhase} /
-     * {@link #borderPhaseEndMillis} pour l'affichage dans le tableau de bord
-     * (voir {@link #refreshScoreboard}).
+     * Enchaîne les phases de réduction de bordure sur la VRAIE bordure du monde de
+     * cette arène ({@code World#getWorldBorder()}) : une première réduction, puis
+     * une pause de quelques minutes, puis une réduction finale jusqu'à un tout
+     * petit cercle au centre. Chaque étape est suivie dans {@link #borderPhase} /
+     * {@link #borderPhaseEndMillis} pour l'affichage dans le tableau de bord.
+     * L'animation elle-même (et ses dégâts) est entièrement gérée par le serveur,
+     * fidèlement, puisqu'il s'agit d'une bordure de monde réelle et non émulée.
      */
     private void startBorderShrink() {
         int phase1Target = plugin.getConfig().getInt("game.border.shrink.phase1.target-diameter", 150);
@@ -647,7 +520,7 @@ public class Arena {
 
         borderPhase = BorderPhase.SHRINKING_1;
         borderPhaseEndMillis = System.currentTimeMillis() + phase1Duration * 1000L;
-        applyBorderSize(phase1Target, phase1Duration);
+        world.getWorldBorder().setSize(phase1Target, phase1Duration * 1000L);
         broadcast(Component.text("La zone jouable commence à se refermer !", NamedTextColor.RED));
 
         shrinkTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -658,32 +531,13 @@ public class Arena {
             shrinkTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 borderPhase = BorderPhase.SHRINKING_2;
                 borderPhaseEndMillis = System.currentTimeMillis() + phase2Duration * 1000L;
-                applyBorderSize(phase2Target, phase2Duration);
+                world.getWorldBorder().setSize(phase2Target, phase2Duration * 1000L);
                 broadcast(Component.text("La zone se referme jusqu'au centre !", NamedTextColor.RED));
 
                 shrinkTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin,
                         () -> borderPhase = BorderPhase.FINAL, phase2Duration * 20L);
             }, pauseSeconds * 20L);
         }, phase1Duration * 20L);
-    }
-
-    private void applyBorderSize(int targetDiameter, long durationSeconds) {
-        // Source de vérité pour nos propres dégâts/rendu (voir getCurrentBorderDiameter) :
-        // on repart de la taille "actuelle" interpolée, pas de la dernière cible brute,
-        // pour enchaîner proprement une nouvelle animation même si la précédente n'est
-        // pas totalement terminée.
-        borderSizeAtPhaseStart = getCurrentBorderDiameter();
-        borderSizeTarget = targetDiameter;
-        borderAnimStartMillis = System.currentTimeMillis();
-        borderAnimDurationMillis = durationSeconds * 1000L;
-
-        for (UUID uuid : players) {
-            Player p = org.bukkit.Bukkit.getPlayer(uuid);
-            if (p == null) continue;
-            WorldBorder border = p.getWorldBorder();
-            if (border == null) continue;
-            border.setSize(targetDiameter, durationSeconds * 1000L);
-        }
     }
 
     private static String formatTime(long totalSeconds) {
@@ -794,8 +648,6 @@ public class Arena {
         if (countdownTask != null) countdownTask.cancel();
         if (graceTask != null) graceTask.cancel();
         if (shrinkTask != null) shrinkTask.cancel();
-        if (borderDamageTask != null) borderDamageTask.cancel();
-        if (borderVisualTask != null) borderVisualTask.cancel();
 
         Player winner = winnerId != null ? org.bukkit.Bukkit.getPlayer(winnerId) : null;
         Component message = winner != null
@@ -833,22 +685,20 @@ public class Arena {
             if (preloadBar != null) preloadBar.removeAll();
             removeAllSpectators();
             plugin.getArenaManager().onRoundEnded(this);
-            cycleToNewZone();
+            cycleToNewWorld();
         }, endDelaySeconds * 20L);
     }
 
     /**
      * Fin normale d'une partie : l'arène ne se détruit PAS. Elle se réinitialise,
-     * tire une nouvelle cellule libre au hasard dans le pool (forcément différente de
-     * l'ancienne, puisque celle-ci reste "tenue" tant qu'elle n'est pas régénérée),
-     * reconstruit son lobby dessus et relance le préchargement — prête à accueillir
-     * une nouvelle partie. L'ancienne zone, elle, est régénérée en arrière-plan puis
-     * relâchée dans le pool pour qu'une autre arène (ou celle-ci, plus tard) puisse
-     * la reprendre.
+     * crée un nouveau monde dédié (voir {@link WorldAllocator}), y reconstruit son
+     * lobby et relance le préchargement — prête à accueillir une nouvelle partie.
+     * L'ancien monde, lui, est supprimé du disque en arrière-plan une fois tout le
+     * monde parti (voir {@link WorldAllocator#deleteArenaWorld}).
      */
-    private void cycleToNewZone() {
+    private void cycleToNewWorld() {
         if (destroyed) return;
-        ZoneAllocator.Zone oldZone = this.zone;
+        World oldWorld = this.world;
 
         players.clear();
         alive.clear();
@@ -857,28 +707,14 @@ public class Arena {
         forcedStart = false;
         countdownSecondsLeft = 0;
         borderPhase = BorderPhase.NONE;
-        borderSizeAtPhaseStart = 0;
-        borderSizeTarget = 0;
-        borderAnimDurationMillis = 0L;
 
-        ZoneAllocator.Zone newZone = plugin.getArenaManager().getZoneAllocator().allocateRandomFreeCell();
-        setupZone(newZone);
+        int size = plugin.getConfig().getInt("zone.size", 1000);
+        World newWorld = plugin.getArenaManager().getWorldAllocator().createArenaWorld(size);
+        setupWorld(newWorld, new Zone(0, 0, size));
         startPreload();
         plugin.getArenaManager().savePersistedArenas();
 
-        regenerateAndRelease(oldZone);
-    }
-
-    /** Régénère une zone en arrière-plan (annule les dégâts/constructions de la partie), puis la relâche dans le pool. */
-    private void regenerateAndRelease(ZoneAllocator.Zone oldZone) {
-        ZoneAllocator allocator = plugin.getArenaManager().getZoneAllocator();
-        int chunksPerTick = plugin.getConfig().getInt("zone.regen-chunks-per-tick", 2);
-        ZoneRegenerator regenerator = new ZoneRegenerator(plugin, chunksPerTick);
-        regenerator.regenerate(world, oldZone, (done, total) -> {
-        }, () -> {
-            allocator.release(oldZone);
-            plugin.getLogger().info("Cellule (" + oldZone.cellX() + "," + oldZone.cellZ() + ") régénérée et relâchée dans le pool.");
-        });
+        plugin.getArenaManager().getWorldAllocator().deleteArenaWorld(oldWorld);
     }
 
     // ---------------------------------------------------------------- scoreboard
@@ -912,6 +748,19 @@ public class Arena {
             case GRACE_PERIOD -> lines.add("§aPVP désactivé");
             case PVP -> lines.add("§cPVP activé !");
             case ENDED -> lines.add("§7Partie terminée");
+        }
+
+        if (state == ArenaState.GRACE_PERIOD || state == ArenaState.PVP) {
+            // Taille réelle de la bordure du monde de cette arène (vraie bordure
+            // vanilla : la valeur est toujours à jour, y compris en pleine animation).
+            int currentDiameter = (int) Math.round(world.getWorldBorder().getSize());
+            lines.add("§7Taille zone: §f" + currentDiameter + " blocs");
+
+            WorldBorder border = world.getWorldBorder();
+            double dx = viewer.getLocation().getX() - border.getCenter().getX();
+            double dz = viewer.getLocation().getZ() - border.getCenter().getZ();
+            int distanceToCenter = (int) Math.round(Math.sqrt(dx * dx + dz * dz));
+            lines.add("§7Distance du centre: §f" + distanceToCenter + " blocs");
         }
 
         if (state == ArenaState.PVP) {

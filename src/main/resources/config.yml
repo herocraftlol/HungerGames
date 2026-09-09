@@ -1,5 +1,6 @@
-# Monde dans lequel les zones du Hunger Games sont allouees.
-# Doit etre un monde "normal" (generation vanilla, pas plat/vide).
+# Monde partagé où vit le HUB (spawn/lobby central). Les arènes, elles, vivent
+# chacune dans leur propre monde Bukkit dédié, créé/supprimé automatiquement
+# (voir la section "arena-worlds" plus bas) — ce réglage ne concerne QUE le hub.
 world: world
 
 # Point de retour des joueurs quand ils ne sont pas en partie (hub).
@@ -21,29 +22,35 @@ hub:
     # Distance (en blocs) entre le spawn et la rangée de PNJ.
     npc-distance: 18
 
+# Chaque arène vit dans son propre monde Bukkit dédié (créé dynamiquement à
+# côté du dossier du hub, sur le disque du serveur), pour bénéficier de la
+# VRAIE bordure de monde vanilla (animée et infligeant ses dégâts nativement,
+# fiable) au lieu d'une bordure virtuelle par-joueur. Voir le README pour le
+# détail de cette architecture et ses implications (espace disque, temps de
+# création d'un monde...).
+arena-worlds:
+  # Préfixe du nom de dossier des mondes d'arène générés
+  # (ex. "hg_arena_a1b2c3d4"). Change-le si "hg_arena_" entre déjà en conflit
+  # avec un monde existant sur ton serveur.
+  arena-name-prefix: "hg_arena_"
+
 zone:
   # Taille (diametre) d'une zone en blocs, choisie par un administrateur via
-  # /hgadmin zone create <nom> (1000 => rayon 500 depuis le centre de la zone).
-  # Toutes les zones créées/tirées partagent cette même taille (grille régulière).
+  # /hgadmin zone create <nom> (1000 => rayon 500 depuis le centre de son monde).
+  # Toutes les zones créées partagent cette même taille.
   size: 1000
-  # Rayon du pool de cellules (en NOMBRE DE CELLULES, pas en blocs) autour du centre
-  # du monde, dans lequel une zone aléatoire libre est tirée à chaque fois qu'une
-  # arène a besoin d'une nouvelle zone (création, ou cycle après une partie).
-  # Avec la valeur par défaut (50) et size=1000, le pool couvre environ
-  # 100x100 cellules = jusqu'à -50000..50000 en X/Z, soit largement de quoi faire
-  # tourner de nombreuses arènes en parallèle sans jamais se marcher dessus.
-  pool-radius-cells: 50
   # Marge de securite a l'interieur de la bordure pour le scatter des joueurs (evite de spawn collé au bord).
   scatter-margin: 40
-  # Nombre de chunks charges/generes par tick pendant le prechargement d'une zone.
+  # Nombre de chunks charges/generes par tick pendant le prechargement d'une zone
+  # (nouveau monde d'arène) ou de la zone du hub.
   chunks-per-tick: 8
-  # Nombre de chunks régénérés par tick à la fin d'une partie (annule les dégâts/
-  # constructions faites pendant la partie). Plus lourd que le préchargement,
-  # d'où une valeur plus basse par défaut pour éviter les à-coups de TPS.
+  # Nombre de chunks régénérés par tick pour la zone construite du HUB
+  # (/hgadmin hub delete uniquement — les arènes, elles, suppriment tout leur
+  # monde d'un coup au lieu de régénérer chunk par chunk, voir WorldAllocator).
   regen-chunks-per-tick: 2
 
 lobby:
-  # Hauteur (Y) de la plateforme flottante de lobby, au centre de chaque zone.
+  # Hauteur (Y) de la plateforme flottante de lobby, au centre du monde de chaque arène.
   y: 200
   radius: 8
   # Marge (en blocs) entre le bord de la plateforme et la cage de blocs barrière
