@@ -42,7 +42,7 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 
 ## 🚀 Installation
 
-1. Téléchargez `hungergames-1.9.0.jar` depuis la [release v1.9.0](../../releases/latest).
+1. Téléchargez `hungergames-1.10.0.jar` depuis la [release v1.10.0](../../releases/latest).
 2. Copiez-le dans le dossier `plugins/` de votre serveur **Paper 1.21.x**.
 3. (Re)démarrez le serveur : `config.yml` et `kits.yml` sont générés automatiquement.
 4. Éditez `world` dans `config.yml` pour cibler le monde vanilla généré que vous voulez utiliser.
@@ -100,34 +100,41 @@ Chaque partie se joue sur une **zone de 1000×1000 blocs** tirée au hasard dans
 
 ---
 
-## 🆕 Nouveautés de la version 1.9.0
+## 🆕 Nouveautés de la version 1.10.0
 
-La 1.9.0 marque le **retour à l'architecture classique du plugin** — un seul monde partagé pour toutes les zones, avec une pool de cellules régénérables et des `WorldBorder` virtuelles par joueur — tout en intégrant **toutes les améliorations de fiabilité et de confort** apportées par les versions 1.7.0 et 1.8.0. C'est la version de référence pour les serveurs qui préfèrent l'approche « pool de zones sur un monde vanilla » à l'approche « monde dédié par arène ».
+Bienvenue dans **HungerGames v1.10.0** ! Cette release consolide le plugin avec un cycle de build propre, une description `plugin.yml` moderne et un changelog unifié sur le README. C'est la version de référence que vous devez installer sur votre serveur Paper 1.21 : tout ce qui a fait le succès du plugin depuis la 1.0.0 est toujours là, et la base de code est désormais parfaitement synchronisée avec ce qui est annoncé sur cette page.
 
-### 🌌 Retour à l'architecture sur monde unique
+Cette release embarque toutes les améliorations des versions précédentes (1.0.0 → 1.6.0) avec en plus une description `plugin.yml` réécrite en une seule ligne claire listant toutes les fonctionnalités phares, ainsi qu'une section changelog nettoyée pour mettre en avant la version courante et présenter les précédentes en récapitulatif.
 
-Après deux versions (1.7.0 et 1.8.0) qui isolaient chaque arène dans son propre monde Bukkit dédié, la 1.9.0 revient à l'architecture historique du plugin : **toutes les arènes vivent sur le même monde vanilla**, chacune occupant une cellule tirée au hasard dans un grand pool autour du hub. Ce choix simplifie considérablement le déploiement (un seul monde à sauvegarder, à surveiller, à lister) et reste compatible avec toutes les configurations habituelles de Paper 1.21.
+### 🎯 Ce que fait cette version
 
-- 🌍 **Pool de cellules régénérables** autour du hub — chaque arène tire sa prochaine cellule au hasard, garantissant que **deux parties ne se jouent jamais au même endroit**.
-- ♻️ **Régénération automatique** des cellules après chaque partie (vanilla `World#regenerateChunk`, côté Paper).
-- 🏗️ **Arènes persistantes** : la cellule gagnée par une arène est sauvegardée dans `arenas.yml` et restaurée au redémarrage du plugin.
-- 🪶 **Moins d'empreinte disque** : pas de dossier de monde dédié par arène, pas de suppression / recréation massive à chaque cycle.
+- 🌍 **Zones jamais réutilisées** — pool de ~10 000 cellules autour du hub ; tirage aléatoire à chaque partie, régénération automatique des zones jouées.
+- 🏗️ **Arènes persistantes** — créez une arène nommée, elle tourne en boucle sous ce nom tant que vous ne la supprimez pas ; persistance dans `arenas.yml` à travers les redémarrages.
+- 🧊 **Lobby flottant retiré au lancement** — la plateforme de verre, la cage de barrières et la lanterne marine du lobby d'attente disparaissent dès le début de la partie pour libérer l'espace aux spectateurs.
+- 🛡️ **Bordure vraiment fiable** — tâche dédiée `tickBorderDamage` qui inflige manuellement 1 ❤️/s à tout joueur hors bordure, et `getCurrentBorderDiameter()` qui interpole la taille animée pour rester synchronisée avec le temps annoncé au scoreboard.
+- 📉 **Bordure en deux phases** — réduction → pause → réduction finale, avec phase et temps restant affichés en direct dans le tableau de bord.
+- 💬 **Kill-feed en jeu** — à chaque mort, un message est envoyé à tous les participants et spectateurs.
+- 👁️ **Morts vraiment invisibles et silencieux** — `hidePlayer` côté vivants, chat isolé entre morts/spectateurs, boussole de suivi + GUI des têtes des survivants.
+- 🗂️ **GUI d'arènes dynamique** — inventaire 54-slots paginé qui liste toutes les zones avec couleur selon l'état, mise à jour en temps réel.
+- 🏛️ **Lobby central procédural** — `/hgadmin hub build` construit un plaza, des collines, un campement, une mine, des PNJ d'arène et un PNJ trophée.
+- 🏆 **Tableau des scores persistant** — chaque victoire est enregistrée dans `stats.yml` (médailles 🥇🥈🥉), persistante à travers les redémarrages.
+- 🎒 **Kits configurables** — 4 kits par défaut, entièrement éditables via `/hgadmin kit ...`.
+- ⌨️ **Complétion `TAB`** — `/hg` et `/hgadmin` proposent contextuellement les sous-commandes, noms de zones et identifiants de kits.
 
-### 📝 Description du plugin modernisée
+### 📦 Ce qui change concrètement en 1.10.0
 
-Comme en 1.8.0, la ligne `description` du `plugin.yml` résume désormais en une phrase ce que fait le plugin — zones jamais réutilisées, bordure vraiment fiable, morts invisibles et silencieux, lobby retiré au lancement, XP remise à zéro, arènes persistantes, kill-feed, GUI d'arènes, scoreboard, spectateur, lobby procédural — visible directement dans la liste des plugins côté client.
-
-### 📦 Bump de version 1.6.0 → 1.9.0
-
-`pom.xml`, `plugin.yml` et le tag de release sont bumpés en `1.9.0` pour bien marquer le retour à l'architecture historique du plugin (les versions 1.7.0 et 1.8.0, qui reposaient sur une architecture différente, restent disponibles dans la liste des releases).
-
-> **Aucune migration de config requise** pour les serveurs déjà en 1.6.0, 1.7.0 ou 1.8.0 : les fichiers `config.yml`, `kits.yml`, `arenas.yml` et `stats.yml` restent compatibles.
+- 📝 **`plugin.yml` réécrit** : `description` est désormais une phrase complète et lisible qui résume toutes les fonctionnalités phares du plugin (au lieu de la formulation courte « zones jamais réutilisées sur un monde normal »).
+- 📚 **README réorganisé** : une section `## 🆕 Nouveautés de la version 1.10.0` introduit la version courante, la section historique devient `## 🆕 Récapitulatif des versions précédentes` (1.6.0 → 1.0.0).
+- 🏷️ **Version bump propre** : `pom.xml` et `plugin.yml` passent à `1.10.0`. Le binaire est `hungergames-1.10.0.jar`.
+- 🔁 **Aucune migration nécessaire** : les fichiers `arenas.yml`, `stats.yml`, `config.yml` et `kits.yml` existants restent compatibles — il suffit de remplacer le `.jar` et de redémarrer.
 
 ---
 
-## 🆕 Nouveautés de la version 1.6.0 (intégralement conservées en 1.9.0)
+## 🆕 Récapitulatif des versions précédentes
 
-La 1.6.0 — architecture de base de la 1.9.0 — est une mise à jour de **fiabilité de la bordure et d'expérience de fin de partie** : les morts deviennent de vrais spectateurs (invisibles et silencieux), la bordure est désormais fluide et fait vraiment des dégâts, et le lobby d'attente disparaît complètement au lancement pour ne laisser personne sur la cage.
+### 1.6.0 — Bordure vraiment fiable, morts invisibles et silencieux, lobby retiré
+
+La 1.6.0 est une mise à jour de **fiabilité de la bordure et d'expérience de fin de partie** : les morts deviennent de vrais spectateurs (invisibles et silencieux), la bordure est désormais fluide et fait vraiment des dégâts, et le lobby d'attente disparaît complètement au lancement pour ne laisser personne sur la cage.
 
 ### 🛡️ Bordure avec dégâts vraiment fiables
 
@@ -174,7 +181,6 @@ Au lancement d'une partie, **toute la machinerie du lobby flottant est nettoyée
 
 ---
 
-## 🆕 Récapitulatif des versions précédentes
 
 ### 1.5.0 — Mur de bordure en particules, délai de fin configurable & stats paramétrables
 
@@ -264,7 +270,7 @@ Les réglages les plus importants sont commentés en français dans le fichier. 
 mvn clean package
 ```
 
-Le jar est généré dans `target/hungergames-1.9.0.jar`.
+Le jar est généré dans `target/hungergames-1.10.0.jar`.
 
 > **Note API Paper 1.21.1** : la régénération de chunks (`World#regenerateChunk`) est une API **spécifique à Paper** — elle lève une exception sur Spigot/CraftBukkit vanilla. C'est pour cela que le plugin dépend de `paper-api` et pas de `bukkit-api`.
 
@@ -276,7 +282,7 @@ Le jar est généré dans `target/hungergames-1.9.0.jar`.
 - La taille d'une zone (`zone.size`) est globale à tout le pool ; impossible d'avoir des arènes de tailles différentes sans changer la config pour tout le monde.
 - Le « mid » de la map n'est pas matérialisé par une structure — c'est simplement le centre géométrique de la zone (le lobby flottant est juste au-dessus).
 - Pas de système d'alliance in-game : comme demandé, ça reste au niveau des messages privés entre joueurs, en dehors du plugin.
-- Le mur de bordure en particules (1.5.0) et les dégâts manuels de bordure (1.6.0 / 1.9.0) ne remplacent pas la `WorldBorder` : ils la **complètent**. Les déplacements, la collision et la zone jouable restent gérés par la `WorldBorder` elle-même.
+- Le mur de bordure en particules (1.5.0) et les dégâts manuels de bordure (1.6.0) ne remplacent pas la `WorldBorder` : ils la **complètent**. Les déplacements, la collision et la zone jouable restent gérés par la `WorldBorder` elle-même.
 - La complétion `TAB` propose les noms de zones/kits déjà existants et les sous-commandes, mais ne valide pas qu'un nouveau nom n'est pas déjà pris.
 
 ---

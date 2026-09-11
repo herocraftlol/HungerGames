@@ -50,7 +50,6 @@ public class Arena {
     private BukkitTask shrinkTask;
     private BukkitTask scoreboardTask;
     private BukkitTask borderDamageTask;
-    private BukkitTask borderVisualTask;
     private int countdownSecondsLeft;
     private boolean forcedStart = false;
     private boolean destroyed = false;
@@ -426,7 +425,6 @@ public class Arena {
         if (shrinkTask != null) shrinkTask.cancel();
         if (scoreboardTask != null) scoreboardTask.cancel();
         if (borderDamageTask != null) borderDamageTask.cancel();
-        if (borderVisualTask != null) borderVisualTask.cancel();
 
         Component message = Component.text("Partie annulée : " + reason, NamedTextColor.RED);
         for (UUID uuid : players) {
@@ -495,16 +493,12 @@ public class Arena {
         int graceSeconds = plugin.getConfig().getInt("game.grace-period-seconds", 300);
         graceTask = org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, this::endGracePeriod, graceSeconds * 20L);
 
-        // Dégâts manuels hors bordure : le WorldBorder par joueur n'applique pas
-        // toujours fidèlement ses dégâts vanilla, donc on les gère nous-mêmes,
-        // que la bordure soit en train de bouger ou non.
+        // Dégâts manuels hors bordure : le WorldBorder par-joueur (virtuel) de Paper
+        // n'applique pas ses dégâts vanilla (bug Paper confirmé et non résolu,
+        // cf. PaperMC/Paper#12372), donc on doit les gérer nous-mêmes. Le mur et
+        // l'animation de rétrécissement, eux, restent 100% vanilla (voir setSize
+        // avec durée plus haut) : c'est le client qui affiche le mur natif tout seul.
         borderDamageTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, this::tickBorderDamage, 20L, 20L);
-
-        // Rendu manuel du mur de bordure (particules) : le WorldBorder par-joueur
-        // de Paper est connu pour ne pas toujours envoyer le paquet client qui
-        // affiche le mur (bug Paper non résolu, cf. PaperMC/Paper#12372/#7748),
-        // donc on ne se fie plus qu'à notre propre rendu, systématiquement visible.
-        borderVisualTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, this::tickBorderVisuals, 10L, 10L);
     }
 
     /**
@@ -545,31 +539,6 @@ public class Arena {
         }
     }
 
-    /** Affiche un mur de particules le long de la bordure, pour chaque joueur proche d'un bord. */
-    private void tickBorderVisuals() {
-        for (UUID uuid : players) {
-            if (!alive.contains(uuid)) continue;
-            Player p = org.bukkit.Bukkit.getPlayer(uuid);
-            if (p != null) renderBorderWall(p);
-        }
-    }
-
-    private void renderBorderWall(Player p) {
-        double half = getCurrentBorderDiameter() / 2.0;
-        double centerX = zone.centerX() + 0.5;
-        double centerZ = zone.centerZ() + 0.5;
-        Location loc = p.getLocation();
-
-        double minX = centerX - half, maxX = centerX + half;
-        double minZ = centerZ - half, maxZ = centerZ + half;
-        double visibility = 32;
-
-        if (Math.abs(loc.getX() - minX) <= visibility) drawWallAtX(p, minX, loc.getZ(), visibility);
-        if (Math.abs(loc.getX() - maxX) <= visibility) drawWallAtX(p, maxX, loc.getZ(), visibility);
-        if (Math.abs(loc.getZ() - minZ) <= visibility) drawWallAtZ(p, loc.getX(), minZ, visibility);
-        if (Math.abs(loc.getZ() - maxZ) <= visibility) drawWallAtZ(p, loc.getX(), maxZ, visibility);
-    }
-
     /**
      * Taille (diamètre) actuelle "réelle" de la bordure, en interpolant nous-mêmes
      * entre le début et la fin de la dernière animation demandée
@@ -607,27 +576,6 @@ public class Arena {
         double dx = loc.getX() - centerX;
         double dz = loc.getZ() - centerZ;
         return Math.sqrt(dx * dx + dz * dz);
-    }
-
-    private static final org.bukkit.Particle.DustOptions BORDER_DUST =
-            new org.bukkit.Particle.DustOptions(org.bukkit.Color.fromRGB(255, 50, 50), 1.3f);
-
-    private void drawWallAtX(Player p, double x, double centerZ, double span) {
-        double baseY = p.getLocation().getY();
-        for (double dz = -span; dz <= span; dz += 2.0) {
-            for (double dy = -4; dy <= 6; dy += 1.5) {
-                p.spawnParticle(org.bukkit.Particle.DUST, x, baseY + dy, centerZ + dz, 1, 0, 0, 0, 0, BORDER_DUST);
-            }
-        }
-    }
-
-    private void drawWallAtZ(Player p, double centerX, double z, double span) {
-        double baseY = p.getLocation().getY();
-        for (double dx = -span; dx <= span; dx += 2.0) {
-            for (double dy = -4; dy <= 6; dy += 1.5) {
-                p.spawnParticle(org.bukkit.Particle.DUST, centerX + dx, baseY + dy, z, 1, 0, 0, 0, 0, BORDER_DUST);
-            }
-        }
     }
 
     private void giveKit(Player player, Kit kit) {
@@ -817,7 +765,6 @@ public class Arena {
         if (graceTask != null) graceTask.cancel();
         if (shrinkTask != null) shrinkTask.cancel();
         if (borderDamageTask != null) borderDamageTask.cancel();
-        if (borderVisualTask != null) borderVisualTask.cancel();
 
         Player winner = winnerId != null ? org.bukkit.Bukkit.getPlayer(winnerId) : null;
         Component message = winner != null
