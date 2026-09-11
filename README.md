@@ -9,15 +9,45 @@ crée un nouveau, ce qui permet de faire tourner plusieurs arènes en parallèle
 sans jamais qu'elles se marchent dessus — et surtout, permet à chaque arène
 d'avoir sa **vraie** bordure de monde vanilla (voir plus bas).
 
+> 🆕 **Vous lisez le README de la v1.8.0** — voir la section
+> [Nouveautés v1.8.0](#nouveautés-v180) plus bas pour ce qui change par
+> rapport à la v1.7.0.
+
 ## Téléchargement
 
-Le jar prêt à l'emploi est dans la [release v1.7.0](../../releases/tag/v1.7.0). Tu peux aussi le compiler toi-même :
+Le jar prêt à l'emploi est dans la [release v1.8.0](../../releases/tag/v1.8.0). Tu peux aussi le compiler toi-même :
 
 ```bash
 mvn clean package
 ```
 
-…ce qui produit `target/hungergames-1.7.0.jar` (voir plus bas pour le détail de la compilation).
+…ce qui produit `target/hungergames-1.8.0.jar` (voir plus bas pour le détail de la compilation).
+
+## Nouveautés v1.8.0
+
+Cette version est une **release de maintenance** ciblée. Le gameplay et les
+fonctionnalités de la v1.7.0 sont intégralement repris à l'identique —
+un monde Bukkit dédié par arène, vraie bordure vanilla animée, morts
+invisibles/silencieux, lobby retiré au lancement, XP remise à zéro,
+arènes persistantes, kill-feed, scoreboard avec bordure en deux phases,
+spectateur, GUI d'arènes temps réel et lobby procédural — et la chaîne
+de build devient simplement plus propre :
+
+- 🛠️ **Compatibilité API Paper 1.21.1 rétablie** : la v1.8.0 utilise
+  l'API `WorldBorder#setSize(double, long)` classique (millisecondes), ce
+  qui correspond à l'API effectivement disponible dans la dépendance
+  `paper-api 1.21.1-R0.1-SNAPSHOT` ciblée par le `pom.xml`. Pas de
+  surcharge en `java.time.Duration` qui n'existe pas dans cette version
+  précise de Paper, donc un build propre sans hack.
+- 📝 **Description du plugin modernisée** : la ligne `description` du
+  `plugin.yml` résume maintenant en une phrase le fonctionnement du
+  plugin (monde dédié par arène, vraie bordure vanilla, morts
+  invisibles/silencieux, lobby retiré, XP à zéro, arènes persistantes,
+  kill-feed, scoreboard, spectateur, GUI d'arènes, lobby procédural) —
+  visible directement dans la liste des plugins côté client.
+- 📦 **Version bumpée** : `1.7.0 → 1.8.0` dans `pom.xml`,
+  `plugin.yml` et le tag de release. Aucune migration de config
+  requise pour les serveurs déjà en v1.7.0.
 
 ## Compilation (détails)
 
@@ -25,7 +55,7 @@ mvn clean package
 mvn clean package
 ```
 
-Produit `target/hungergames-1.7.0.jar`. Copie-le dans `plugins/` de ton
+Produit `target/hungergames-1.8.0.jar`. Copie-le dans `plugins/` de ton
 serveur Paper 1.21.x. Le plugin dépend de `paper-api` (Bukkit seul ne suffit
 pas : `Bukkit#createWorld(WorldCreator)` et la `WorldBorder` réelle du monde
 sont utilisées en natif).
