@@ -49,7 +49,9 @@ public class HGAdminCommand implements CommandExecutor, TabCompleter {
             case "hub" -> handleHub(sender, args);
             case "list" -> {
                 sender.sendMessage(Component.text("Zones actives : " + plugin.getArenaManager().getArenas().size(), NamedTextColor.YELLOW));
-                sender.sendMessage(Component.text("Chaque zone vit dans son propre monde Bukkit dédié (voir /hgadmin zone info <nom>).", NamedTextColor.GRAY));
+                sender.sendMessage(Component.text("Cellules du pool actuellement occupées : " +
+                        plugin.getArenaManager().getZoneAllocator().getHeldCount() + " / " +
+                        plugin.getArenaManager().getZoneAllocator().getPoolCapacity(), NamedTextColor.YELLOW));
             }
             default -> sendHelp(sender);
         }
@@ -102,9 +104,9 @@ public class HGAdminCommand implements CommandExecutor, TabCompleter {
                     return;
                 }
                 plugin.getArenaManager().createNamedZone(name).ifPresentOrElse(arena -> {
-                    sender.sendMessage(Component.text("Zone '" + name + "' créée sur son propre monde dédié ('" +
-                            arena.getWorld().getName() + "'), taille " + arena.getZone().size() +
-                            ". Préchargement en cours...", NamedTextColor.GREEN));
+                    sender.sendMessage(Component.text("Zone '" + name + "' créée sur la cellule (" +
+                            arena.getZone().cellX() + "," + arena.getZone().cellZ() + "), centre (" +
+                            arena.getZone().centerX() + "," + arena.getZone().centerZ() + "). Préchargement en cours...", NamedTextColor.GREEN));
                 }, () -> sender.sendMessage(Component.text("Impossible de créer la zone (nom déjà pris ou invalide).", NamedTextColor.RED)));
             }
             case "delete", "remove", "cancel" -> {
@@ -161,8 +163,8 @@ public class HGAdminCommand implements CommandExecutor, TabCompleter {
                 plugin.getArenaManager().findByName(args[2]).ifPresentOrElse(arena -> {
                     sender.sendMessage(Component.text("=== Zone '" + arena.getName() + "' ===", NamedTextColor.GOLD));
                     sender.sendMessage(Component.text("État : " + arena.getState(), NamedTextColor.YELLOW));
-                    sender.sendMessage(Component.text("Monde dédié : " + arena.getWorld().getName() +
-                            " (taille " + arena.getZone().size() + ")", NamedTextColor.YELLOW));
+                    sender.sendMessage(Component.text("Cellule : (" + arena.getZone().cellX() + "," + arena.getZone().cellZ() +
+                            ") — centre (" + arena.getZone().centerX() + "," + arena.getZone().centerZ() + "), taille " + arena.getZone().size(), NamedTextColor.YELLOW));
                     sender.sendMessage(Component.text("Joueurs : " + arena.getPlayers().size() + "/" + arena.getMaxPlayers(), NamedTextColor.YELLOW));
                     sender.sendMessage(Component.text("Spectateurs : " + arena.getSpectatorCount(), NamedTextColor.YELLOW));
                 }, () -> sender.sendMessage(Component.text("Zone introuvable.", NamedTextColor.RED)));

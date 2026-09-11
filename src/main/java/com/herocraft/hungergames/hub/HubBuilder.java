@@ -1,7 +1,7 @@
 package com.herocraft.hungergames.hub;
 
 import com.herocraft.hungergames.HungerGamesPlugin;
-import com.herocraft.hungergames.arena.Zone;
+import com.herocraft.hungergames.arena.ZoneAllocator;
 import com.herocraft.hungergames.arena.ZoneRegenerator;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -138,7 +138,7 @@ public final class HubBuilder {
         sender.sendMessage(Component.text("Suppression du lobby en cours (régénération du terrain naturel)... " +
                 "peut prendre 15-30 secondes.", NamedTextColor.YELLOW));
 
-        Zone box = new Zone(cx, cz, buildRadius * 2);
+        ZoneAllocator.Zone box = new ZoneAllocator.Zone(0, 0, cx, cz, buildRadius * 2);
         int chunksPerTick = plugin.getConfig().getInt("zone.regen-chunks-per-tick", 2);
         ZoneRegenerator regenerator = new ZoneRegenerator(plugin, chunksPerTick);
         regenerator.regenerate(world, box, (regenerated, total) -> {

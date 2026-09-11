@@ -31,7 +31,7 @@ public class ZoneRegenerator {
      * @param onProgress appelé régulièrement avec (chunks régénérés, chunks total)
      * @param onDone     appelé une fois toute la zone régénérée
      */
-    public void regenerate(World world, Zone zone, BiConsumer<Integer, Integer> onProgress, Runnable onDone) {
+    public void regenerate(World world, ZoneAllocator.Zone zone, BiConsumer<Integer, Integer> onProgress, Runnable onDone) {
         int minChunkX = zone.minX() >> 4;
         int maxChunkX = zone.maxX() >> 4;
         int minChunkZ = zone.minZ() >> 4;

@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.function.BiConsumer;
 
 /**
- * Charge/génère à l'avance tous les chunks d'une {@link Zone} avant
+ * Charge/génère à l'avance tous les chunks d'une {@link ZoneAllocator.Zone} avant
  * qu'une partie ne puisse commencer, pour éviter tout lag de génération pendant
  * le jeu et pour que la carte soit "indisponible" tant qu'elle n'est pas prête.
  */
@@ -29,7 +29,7 @@ public class ChunkPreloader {
      * @param onProgress appelé régulièrement avec (chunksCharges, chunksTotal)
      * @param onDone     appelé une fois tous les chunks chargés
      */
-    public void preload(World world, Zone zone, BiConsumer<Integer, Integer> onProgress, Runnable onDone) {
+    public void preload(World world, ZoneAllocator.Zone zone, BiConsumer<Integer, Integer> onProgress, Runnable onDone) {
         int minChunkX = zone.minX() >> 4;
         int maxChunkX = zone.maxX() >> 4;
         int minChunkZ = zone.minZ() >> 4;
