@@ -1,9 +1,9 @@
 name: HungerGames
 main: com.herocraft.hungergames.HungerGamesPlugin
-version: 1.10.0
+version: 1.11.0
 api-version: '1.21'
 author: zzaee
-description: Hunger Games "battle royale" à l'ancienne pour Paper 1.21 — zones jamais réutilisées sur un monde normal, arènes persistantes, bordure vraiment fiable et progressive avec dégâts manuels, morts invisibles et silencieux avec boussole de suivi, lobby d'attente retiré au lancement, XP remise à zéro, kill-feed, GUI d'arènes dynamique, tableau des scores persistant, lobby central procédural.
+description: Hunger Games "battle royale à l'ancienne" pour Paper 1.21 — spawns dispersés sur une vraie map générée, arènes persistantes qui tournent en boucle avec un pool de ~10 000 cellules autour du hub, bordure vraiment fiable et progressive avec dégâts manuels et repaint continu pour compenser le bug Paper, morts invisibles et silencieux avec boussole de suivi, lobby d'attente entièrement retiré au lancement, XP remise à zéro, kill-feed, GUI d'arènes dynamique avec état en temps réel, tableau des scores persistant, lobby central procédural et kits configurables.
 
 commands:
   hg:
