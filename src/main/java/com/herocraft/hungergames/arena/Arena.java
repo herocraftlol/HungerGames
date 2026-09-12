@@ -519,17 +519,36 @@ public class Arena {
         }
     }
 
-    /** Inflige ~1 cœur (2 PV) à chaque joueur actuellement hors de sa bordure. */
+    /**
+     * Inflige ~1 cœur (2 PV) à chaque joueur actuellement hors de sa bordure, et
+     * repousse la taille calculée sur la vraie bordure vanilla de chaque joueur.
+     *
+     * Ce second point est nécessaire car {@code WorldBorder#setSize(cible, durée)}
+     * (voir {@link #applyBorderSize}) ne s'anime pas de façon fiable côté serveur
+     * pour une bordure virtuelle par-joueur (bug Paper connu et non résolu) : le
+     * calcul interne de la taille avance bien tout seul, mais le client ne reçoit
+     * pas forcément les paquets qui font bouger le mur vanilla à l'écran. En
+     * renvoyant nous-mêmes {@code setSize(tailleActuelle)} (sans durée, donc
+     * instantané) à chaque tick de cette tâche, on force le client à réafficher
+     * le vrai mur vanilla à la bonne position, en continu, pendant tout le
+     * rétrécissement.
+     */
     private void tickBorderDamage() {
-        double half = getCurrentBorderDiameter() / 2.0;
+        double diameter = getCurrentBorderDiameter();
+        double half = diameter / 2.0;
         double centerX = zone.centerX() + 0.5;
         double centerZ = zone.centerZ() + 0.5;
 
         for (UUID uuid : players) {
-            if (!alive.contains(uuid)) continue;
             Player p = org.bukkit.Bukkit.getPlayer(uuid);
             if (p == null) continue;
 
+            WorldBorder border = p.getWorldBorder();
+            if (border != null) {
+                border.setSize(diameter);
+            }
+
+            if (!alive.contains(uuid)) continue;
             Location loc = p.getLocation();
             double dx = Math.abs(loc.getX() - centerX);
             double dz = Math.abs(loc.getZ() - centerZ);
